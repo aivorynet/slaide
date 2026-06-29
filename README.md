@@ -2,6 +2,8 @@
 
 A new presentation file format, built for AI.
 
+[![npm](https://img.shields.io/npm/v/@aivorynet/slaide?logo=npm&color=cb3837)](https://www.npmjs.com/package/@aivorynet/slaide) [![Download](https://img.shields.io/github/v/release/aivorynet/slaide?label=download&logo=github)](https://github.com/aivorynet/slaide/releases/latest) [![CI](https://github.com/aivorynet/slaide/actions/workflows/ci.yml/badge.svg)](https://github.com/aivorynet/slaide/actions/workflows/ci.yml) [![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 ![The free slaide viewer rendering a deck](https://raw.githubusercontent.com/aivorynet/slaide/main/docs/assets/viewer.png)
 
 `.slaide` is a native, plain-text format for presentations: Markdown plus a small YAML theme. PowerPoint's `.pptx` is bulky XML that language models get wrong. A `.slaide` file is a few kilobytes of text an AI writes correctly, every time. One file renders to a navigable web deck, a high-fidelity PDF, and editable PowerPoint. A reusable theme carries the design, so nobody hand-places pixels.
