@@ -1,0 +1,34 @@
+[package]
+name = "slaide-view"
+version = "1.0.1"
+edition = "2021"
+description = "Native viewer/launcher for .slaide presentations"
+
+[[bin]]
+name = "slaide-view"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+
+[dependencies]
+anyhow = "1.0.102"
+dirs = "5.0"
+rfd = "0.17.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+tao = "0.35.3"
+which = "8.0.4"
+wry = "0.55.1"
+
+[target."cfg(windows)".build-dependencies]
+winresource = "0.1"
+
+[target."cfg(windows)".dependencies]
+winreg = "0.56.0"
+# Silent print-to-PDF via the WebView2 COM API (ICoreWebView2_7::PrintToPdf).
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
+windows-core = "0.61"

@@ -1,0 +1,74 @@
+---
+master: ./pulse.slaide.yaml
+title: slaide
+company: slaide
+~footer: slaide — the deck format AI gets right
+---
+layout: cover
+footer: Seed — 2026
+---
+:: kicker ::
+The deck format AI gets right
+:: title ::
+You don't build decks anymore. [AI does.]{.accent}
+:: promise ::
+The new workflow is "make me the deck." The only question left is whether you can trust what comes back.
+---
+layout: statement
+---
+:: kicker ::
+The problem
+:: title ::
+PowerPoint is a format built for machines that [aren't AI.]{.accent}
+:: note ::
+`.pptx` is a zip of bloated, namespaced XML with absolute coordinates. AI botches it — so AI-made decks come back misaligned, off-brand, broken. You finish the job by hand.
+---
+layout: solution
+---
+:: kicker ::
+The answer
+:: title ::
+slaide is the deck format [AI gets right.]{.accent}
+:: note ::
+A small, plain-text source instead of megabytes of XML. AI writes a complete deck in one pass; you review and present. The human barely touches it.
+---
+layout: traction
+---
+:: kicker ::
+The proof
+:: big ::
+92–97%
+:: cards ::
+**Pixel match** recreating a real, hand-designed branded deck — generated in a single pass, zero pixel-pushing.
+---
+layout: metrics
+---
+:: kicker ::
+One source — no lock-in
+:: title ::
+One source. Web, PDF, editable PowerPoint. [It can't drift.]{.accent}
+:: c1 ::
+[3]{.xl .accent}
+
+**Formats, one source**
+Web deck, high-fidelity PDF, and editable `.pptx`.
+:: c2 ::
+[2-way]{.xl .accent}
+
+**Import + export**
+PowerPoint and Keynote in; editable `.pptx` back out.
+:: c3 ::
+[MCP]{.xl .accent}
+
+**Agents author it**
+A server lets agents generate, validate, and render decks.
+---
+layout: ask
+footer: getslaide.com
+---
+:: kicker ::
+The ask
+:: title ::
+Let AI make the deck. For once, [trust the result.]{.accent}
+:: cta ::
+Point your AI at slaide and get a flawless, on-brand, editable deck in one pass.

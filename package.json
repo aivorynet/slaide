@@ -1,0 +1,74 @@
+{
+  "name": "@aivorynet/slaide",
+  "version": "1.0.1",
+  "description": "An AI-authorable slide language with beautiful web + PDF output",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Paul Piper",
+  "homepage": "https://getslaide.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aivorynet/slaide.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aivorynet/slaide/issues"
+  },
+  "keywords": [
+    "slides",
+    "presentation",
+    "markdown",
+    "pdf",
+    "ai",
+    "deck",
+    "powerpoint-alternative"
+  ],
+  "bin": {
+    "slaide": "bin/slaide.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "themes",
+    "skills",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:engine": "bun build src/engine-entry.ts --compile --external playwright --external playwright-core --external chromium-bidi --outfile viewer/vendor/slaide-engine",
+    "build:viewer": "npm run build:engine && cargo build --release --manifest-path viewer/Cargo.toml",
+    "dev": "tsx src/cli.ts",
+    "slaide": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "fast-xml-parser": "^4.5.6",
+    "js-yaml": "^4.1.0",
+    "jszip": "^3.10.1",
+    "markdown-it": "^14.1.0",
+    "zod": "^3.24.1"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.49.0",
+    "pptxgenjs": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.10.0",
+    "@types/pngjs": "^6.0.5",
+    "pdf-to-png-converter": "^4.1.1",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,20 @@
+Windows Registry Editor Version 5.00
+
+; Fallback file association for .slaide — edit BOTH paths to your slaide-view.exe,
+; then double-click this file. (Prefer `slaide-view.exe --register`, which fills the
+; path in automatically.) Note: backslashes must be doubled in .reg files.
+
+[HKEY_CURRENT_USER\Software\Classes\.slaide]
+@="Slaide.Deck"
+
+[HKEY_CURRENT_USER\Software\Classes\.slaidec]
+@="Slaide.Deck"
+
+[HKEY_CURRENT_USER\Software\Classes\Slaide.Deck]
+@="Slaide Presentation"
+
+[HKEY_CURRENT_USER\Software\Classes\Slaide.Deck\DefaultIcon]
+@="C:\\path\\to\\slaide-view.exe,0"
+
+[HKEY_CURRENT_USER\Software\Classes\Slaide.Deck\shell\open\command]
+@="\"C:\\path\\to\\slaide-view.exe\" \"%1\""

@@ -1,0 +1,130 @@
+name: Release
+
+# On a version tag (the GitLab mirror pushes `v*` here), this:
+#   1. builds the free native viewer (slaide-view) + lean engine for Linux, macOS, Windows,
+#   2. attaches them to a GitHub Release with notes from CHANGELOG.md,
+#   3. publishes the `slaide` package to npm with provenance.
+# Run it manually (workflow_dispatch) to test the build; manual runs skip release + npm.
+#
+# The binaries are unsigned community builds, so macOS Gatekeeper / Windows SmartScreen warn
+# on first run. The signed official binary lives at getslaide.com.
+#
+# Required repo secret: NPM_TOKEN (an npm automation token with publish rights for `slaide`).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: linux-x64,    archive: tar.gz }
+          - { os: macos-latest,   target: macos-arm64,  archive: tar.gz }
+          - { os: macos-13,       target: macos-x64,    archive: tar.gz }
+          - { os: windows-latest, target: windows-x64,  archive: zip }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+
+      # The native viewer uses tao + wry; on Linux that needs WebKitGTK + GTK.
+      - name: Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Build engine + viewer
+        run: npm run build:viewer
+
+      - name: Package
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out/slaide
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp viewer/target/release/slaide-view.exe out/slaide/
+            cp viewer/vendor/slaide-engine.exe out/slaide/ 2>/dev/null || cp viewer/vendor/slaide-engine out/slaide/slaide-engine.exe
+          else
+            cp viewer/target/release/slaide-view out/slaide/
+            cp viewer/vendor/slaide-engine out/slaide/
+          fi
+          cp -r themes out/slaide/
+          cp LICENSE README.md out/slaide/ 2>/dev/null || true
+          cd out
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "slaide-${{ matrix.target }}.zip" slaide >/dev/null
+          else
+            tar czf "slaide-${{ matrix.target }}.tar.gz" slaide
+          fi
+          if command -v sha256sum >/dev/null; then
+            sha256sum slaide-${{ matrix.target }}.* > "slaide-${{ matrix.target }}.sha256"
+          else
+            shasum -a 256 slaide-${{ matrix.target }}.* > "slaide-${{ matrix.target }}.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slaide-${{ matrix.target }}
+          path: out/slaide-${{ matrix.target }}.*
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      id-token: write   # OIDC trusted publishing + provenance (no token needed)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest   # OIDC trusted publishing needs npm >= 11.5
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - name: Publish if this version is new
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "@aivorynet/slaide@$V" version >/dev/null 2>&1; then
+            echo "@aivorynet/slaide@$V already published, skipping."
+          else
+            npm publish --provenance --access public
+          fi
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Release notes from CHANGELOG
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          awk -v h="## [$VER]" 'index($0,h)==1{p=1;next} p&&(index($0,"## [")==1||/^\[[^]]*\]: /){exit} p' CHANGELOG.md > NOTES.md || true
+          [ -s NOTES.md ] || echo "Release $VER" > NOTES.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: NOTES.md
+          files: dist/**/*

@@ -1,0 +1,12 @@
+# Codex-specific skill metadata (Agent Skills open standard).
+# Install this skill folder under .agents/skills/slaide for OpenAI Codex.
+display_name: slaide
+description: Author and render slaide presentations (markdown + YAML → web deck + PDF).
+icon: "🎞️"
+brand_color: "#6C8Cff"
+policy:
+  allow_implicit_invocation: true
+dependencies:
+  tools:
+    # Optional: if the slaide MCP server is registered, Codex can use its tools.
+    - slaide

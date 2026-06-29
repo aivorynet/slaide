@@ -1,0 +1,97 @@
+---
+master: ./marbury.slaide.yaml
+title: Marbury &amp; Stone
+company: Marbury &amp; Stone LLP
+author: Marbury &amp; Stone LLP
+footer: Established MCMXCXII
+~transition: fade
+---
+layout: cover
+---
+:: eyebrow ::
+Counselors at Law · Est. 1971
+:: title ::
+Marbury &amp; Stone
+:: rule ::
+———————
+:: subtitle ::
+Discreet, decisive counsel for matters that cannot afford to go wrong.
+:: meta ::
+New York · London · Washington
+
+---
+layout: statement
+variant: dark
+background: navy
+footer: The matter
+---
+:: eyebrow ::
+The Matter
+:: title ::
+When the stakes are highest, ordinary representation is a liability.
+:: rule ::
+———————
+:: lead ::
+A bet-the-company dispute, a regulator at the door, a deal that must close clean — these are not moments for a learning curve. The wrong counsel does not merely lose; it costs you the room.
+
+---
+layout: statement
+footer: Our answer
+---
+:: eyebrow ::
+Our Answer
+:: title ::
+Counsel that gets it right the first time.
+:: rule ::
+———————
+:: lead ::
+We staff lean teams of senior partners — not pyramids of associates — so the lawyer who argues your case is the lawyer who built it. You retain judgment, not headcount.
+
+---
+layout: record
+footer: The record
+---
+:: eyebrow ::
+The Record
+:: title ::
+Five decades. The results speak in our clients' favor.
+:: s1 ::
+**[$4.2B]{.accent .xxl}**
+
+Recovered or preserved for clients across complex litigation.
+:: s2 ::
+**[94%]{.accent .xxl}**
+
+Of matters resolved before they ever reached a jury.
+:: s3 ::
+**[50+]{.accent .xxl}**
+
+Years of unbroken practice before the bench and the boardroom.
+
+---
+layout: quote
+footer: In their words
+---
+:: mark ::
+&ldquo;
+:: quote ::
+They treated our crisis as their own — and closed the door on it before it ever became public.
+:: rule ::
+———————
+:: attribution ::
+General Counsel · Fortune 100 Industrial Group
+
+---
+layout: closing
+footer: Retain counsel
+---
+:: eyebrow ::
+Retain Counsel
+:: title ::
+When it matters most, retain Marbury &amp; Stone.
+:: rule ::
+———————
+:: lead ::
+A confidential consultation is the first measure of sound judgment.
+:: contact ::
+counsel&#64;marburystone.com · +1 (212) 555·0117

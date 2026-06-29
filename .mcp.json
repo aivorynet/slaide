@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "slaide": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@aivorynet/slaide",
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,98 @@
+---
+master: ../themes/aurora.slaide.yaml
+title: slaide — Q3 Roadmap
+author: The slaide team
+~transition: slide-left
+---
+layout: cover
+transition: fade
+---
+:: title ::
+slaide
+
+:: subtitle ::
+slides that AI can actually write — and humans love to watch
+
+??? Open warm. The whole pitch: plain text in, beautiful deck out.
+
+---
+layout: title-content
+---
+## Why a new language
+
+- PowerPoint's `.pptx` is a zip of namespaced XML — **bulky and overloaded**   >>>
+- Markdown is what language models write most reliably   >>>
+- A forgiving parser means **no broken decks**   >>>
+- One small header defines the entire visual system   >>>
+
+??? Land the contrast: OOXML vs. a single readable file.
+
+---
+layout: two-cols
+---
+:: title ::
+## Input vs. output
+
+:: left ::
+**You write this**
+
+```
+---
+layout: image-right
+---
+## The pipeline
+1. Parse
+2. Compile
+3. Render
+```
+
+:: right ::
+**Your audience sees**
+
+> A typographic, animated, full-bleed presentation — on the web or as a crisp PDF.
+
+---
+layout: image-right
+morph: hero
+---
+:: title ::
+## The pipeline
+
+:: body ::
+1. **Parse** the deck + master   >>>
+2. **Compile** to a portable IR   >>>
+3. **Validate** against the schema   >>>
+4. **Render** to web or PDF   >>>
+
+:: image ::
+![Pipeline diagram](./assets/pipeline.svg){#hero}
+
+---
+layout: image-left
+transition: morph
+---
+:: title ::
+## One IR, many renderers
+
+:: image ::
+![Pipeline diagram](./assets/pipeline.svg){#hero}
+
+:: body ::
+The compiled **deck.ir.json** is the durable asset.
+
+Web and PDF are just *consumers* of it — so they can never drift apart.
+
+---
+layout: quote
+variant: light
+transition: zoom
+---
+:: quote ::
+> "The best format is the one your tools can write flawlessly **and** your audience never thinks about."
+
+---
+layout: section
+transition: zoom
+---
+:: title ::
+Let's build.

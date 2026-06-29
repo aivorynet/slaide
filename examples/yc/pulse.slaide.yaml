@@ -1,0 +1,210 @@
+# yaml-language-server: $schema=https://getslaide.com/schema/v1.json
+schema: slaide/1
+name: pulse
+description: >-
+  PULSE — a YC seed-stage pitch theme. Near-black ground, one electric-coral
+  accent, oversized geometric-grotesque type. Built to read from across a room.
+
+canvas: { aspect: "16:9", width: 1920, height: 1080 }
+
+# ── Fonts ────────────────────────────────────────────────────────────────
+# Space Grotesk: tight, geometric grotesque display. Inter: clean neutral body.
+# Space Mono: typewriter-grotesque for labels/kickers. (All Google Fonts.)
+fonts:
+  display: { family: "Space Grotesk", provider: google, weights: [500, 600, 700] }
+  sans:    { family: "Inter",         provider: google, weights: [400, 500, 600, 700] }
+  mono:    { family: "Space Mono",    provider: google, weights: [400, 700] }
+
+# ── Type scale ───────────────────────────────────────────────────────────
+typeScale:
+  base: "30px"
+  ratio: 1.22
+  steps:
+    mega:    "300px"   # the one giant traction number
+    stat:    "150px"   # oversized metrics
+    hero:    "118px"   # cover / section headlines
+    h1:      "86px"    # standard slide headlines
+    h2:      "58px"
+    h3:      "40px"
+    h4:      "30px"
+    body:    "32px"
+    lead:    "40px"    # large supporting lines
+    caption: "23px"
+    small:   "19px"
+    kicker:  "22px"    # mono eyebrow labels
+
+# ── Colour: two tier ─────────────────────────────────────────────────────
+colors:
+  palette:
+    ink:    "#0A0A0B"   # near-black ground
+    panel:  "#141417"   # raised dark panel
+    line:   "#26262B"   # hairline on dark
+    snow:   "#FAFAF7"   # stark off-white ground
+    cloud:  "#EDEDE8"   # light panel on snow
+    coral:  "#FF4D2E"   # THE accent — electric coral
+    ember:  "#FF7A52"   # lighter coral (gradient tail)
+    chalk:  "#F4F4F0"   # primary text on dark
+    fog:    "#9A9AA2"   # muted text on dark
+    soot:   "#5C5C66"   # muted text on light
+    pitch:  "#101013"   # primary text on light
+  roles:
+    background: "{palette.ink}"
+    text:       "{palette.chalk}"
+    heading:    "{palette.snow}"
+    accent:     "{palette.coral}"
+    muted:      "{palette.fog}"
+
+# ── Gradients (coral text fills, glow) ───────────────────────────────────
+gradients:
+  brand: "linear-gradient(102deg, #FF4D2E 0%, #FF7A52 100%)"
+  fade:  "linear-gradient(180deg, #FAFAF7 0%, #9A9AA2 100%)"
+
+# ── Spacing & chrome metrics + code panels ───────────────────────────────
+tokens:
+  "--slide-padding": "120px"
+  "--chrome-pad": "120px"
+  "--chrome-top": "62px"
+  "--chrome-bottom": "62px"
+  "--chrome-size": "20px"
+  "--chrome-foot-size": "20px"
+  "--logo-h": "34px"
+  "--code-bg": "#141417"
+  "--code-fg": "#F4F4F0"
+  "--code-inline-bg": "#26262B"
+  "--code-pad": "1.0em 1.2em"
+  "--code-radius": "14px"
+  "--code-shadow": "0 24px 60px -28px rgba(0,0,0,.7)"
+
+# ── Backgrounds ──────────────────────────────────────────────────────────
+backgrounds:
+  ink:   { type: solid, color: "{palette.ink}" }
+  snow:  { type: solid, color: "{palette.snow}" }
+  glow:  { type: image, src: "./assets/glow.svg", fit: cover }   # dark + coral radial glow
+
+# ── Variants ─────────────────────────────────────────────────────────────
+# `light` flips roles for the white slides; `dark` is the implicit default but
+# named so layouts can bind it explicitly.
+variants:
+  dark:  { roles: { background: "{palette.ink}",  text: "{palette.chalk}", heading: "{palette.snow}",  muted: "{palette.fog}" } }
+  light: { roles: { background: "{palette.snow}", text: "{palette.pitch}", heading: "{palette.pitch}", muted: "{palette.soot}" } }
+
+transitions: { default: fade, duration: 480 }
+
+# ── Chrome ───────────────────────────────────────────────────────────────
+# Wordmark logo bottom-left; page counter footer-right; kicker footer-center.
+chrome:
+  footer:
+    center: "{{footer}}"
+    right: "{{pagePadded}} — {{totalPadded}}"
+  logoPos: bottom-left
+  logo: >-
+    <svg viewBox="0 0 188 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="18" cy="20" r="9" fill="#FF4D2E"/>
+      <text x="40" y="29" font-family="Space Grotesk, sans-serif" font-size="30"
+            font-weight="700" letter-spacing="-0.5" fill="currentColor">PULSE</text>
+    </svg>
+
+# ── Layouts ──────────────────────────────────────────────────────────────
+layouts:
+
+  # 1) COVER — company + one-line promise, coral glow ground.
+  cover:
+    background: glow
+    variant: dark
+    chrome: footer
+    areas:
+      - "kicker"
+      - "title"
+      - "promise"
+    rows: "auto 1fr auto"
+    padding: "120px 120px 150px"
+    slots:
+      kicker:  { type: caption, style: { font: mono, color: accent, transform: uppercase, size: kicker, weight: "700" } }
+      title:   { type: title,   style: { font: display, size: hero, weight: "700", leading: "0.96", color: heading, valign: center, maxw: "18ch" } }
+      promise: { type: body,    style: { font: sans, size: lead, color: text, weight: "400", maxw: "30ch", leading: "1.25" } }
+
+  # 2) STATEMENT — stark problem statement, huge type on near-black.
+  statement:
+    background: ink
+    variant: dark
+    chrome: footer
+    areas:
+      - "kicker"
+      - "title"
+      - "note"
+    rows: "auto 1fr auto"
+    padding: "120px 120px 130px"
+    slots:
+      kicker: { type: caption, style: { font: mono, color: accent, transform: uppercase, size: kicker, weight: "700" } }
+      title:  { type: title,  style: { font: display, size: h1, weight: "600", leading: "1.02", color: heading, valign: center, maxw: "20ch" } }
+      note:   { type: body,   style: { font: sans, size: body, color: muted, weight: "400", maxw: "44ch", leading: "1.35" } }
+
+  # 3) SOLUTION — crisp answer on stark white (variety / contrast flip).
+  solution:
+    background: snow
+    variant: light
+    chrome: footer
+    areas:
+      - "kicker"
+      - "title"
+      - "note"
+    rows: "auto 1fr auto"
+    padding: "120px 120px 130px"
+    slots:
+      kicker: { type: caption, style: { font: mono, color: accent, transform: uppercase, size: kicker, weight: "700" } }
+      title:  { type: title,  style: { font: display, size: h1, weight: "600", leading: "1.02", color: heading, valign: center, maxw: "18ch" } }
+      note:   { type: body,   style: { font: sans, size: body, color: muted, weight: "400", maxw: "46ch", leading: "1.35" } }
+
+  # 4) TRACTION — one giant number on near-black + supporting metric cards.
+  traction:
+    background: ink
+    variant: dark
+    chrome: footer
+    areas:
+      - "kicker"
+      - "big"
+      - "cards"
+    rows: "auto 1fr auto"
+    cols: "1fr"
+    gap: "1.6em"
+    padding: "110px 120px 130px"
+    slots:
+      kicker: { type: caption, style: { font: mono, color: accent, transform: uppercase, size: kicker, weight: "700" } }
+      big:    { type: title,  style: { font: display, size: mega, color: accent, weight: "700", leading: "0.86", valign: center, align: left } }
+      cards:  { type: body,   style: { font: sans, size: lead, color: text, maxw: "40ch", leading: "1.3" } }
+
+  # 5) METRICS — three equal-height stat cards on near-black ("why now").
+  metrics:
+    background: ink
+    variant: dark
+    chrome: footer
+    areas:
+      - "kicker kicker kicker"
+      - "title title title"
+      - "c1 c2 c3"
+    rows: "auto auto 1fr"
+    cols: "1fr 1fr 1fr"
+    gap: "2em"
+    padding: "92px 120px 124px"
+    slots:
+      kicker: { type: caption, style: { font: mono, color: accent, transform: uppercase, size: kicker, weight: "700" } }
+      title:  { type: title,  style: { font: display, size: h2, weight: "600", color: heading, leading: "1.06", maxw: "30ch" } }
+      c1: { type: body, style: { font: sans, size: caption, color: text, box: panel, leading: "1.35" } }
+      c2: { type: body, style: { font: sans, size: caption, color: text, box: panel, leading: "1.35" } }
+      c3: { type: body, style: { font: sans, size: caption, color: text, box: panel, leading: "1.35" } }
+
+  # 6) ASK — bold CTA on coral glow ground.
+  ask:
+    background: glow
+    variant: dark
+    chrome: footer
+    areas:
+      - "kicker"
+      - "title"
+      - "cta"
+    rows: "auto 1fr auto"
+    padding: "120px 120px 150px"
+    slots:
+      kicker: { type: caption, style: { font: mono, color: accent, transform: uppercase, size: kicker, weight: "700" } }
+      title:  { type: title,  style: { font: display, size: hero, weight: "700", leading: "0.98", color: heading, valign: center, maxw: "20ch" } }
+      cta:    { type: body,   style: { font: sans, size: lead, color: text, weight: "500", maxw: "34ch", leading: "1.25" } }

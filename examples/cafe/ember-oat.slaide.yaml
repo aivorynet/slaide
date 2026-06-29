@@ -1,0 +1,214 @@
+# yaml-language-server: $schema=https://getslaide.com/schema/v1.json
+schema: slaide/1
+name: ember-oat
+description: >
+  Ember & Oat — an artsy independent roastery zine. Risograph-warm palette
+  (espresso, terracotta, riso-amber, sage) on oat paper; expressive Bricolage
+  display, humanist Newsreader body, Space Mono price tags. Asymmetric editorial
+  layouts with paper grain and halftone energy.
+
+canvas: { aspect: "16:9", width: 1920, height: 1080 }
+
+fonts:
+  display: { family: "Bricolage Grotesque", provider: google, weights: [400, 600, 700, 800] }
+  sans:    { family: "Newsreader",          provider: google, weights: [400, 500, 600] }
+  serif:   { family: "Newsreader",          provider: google, weights: [400, 500, 600] }
+  mono:    { family: "Space Mono",          provider: google, weights: [400, 700] }
+
+typeScale:
+  base: "27px"
+  ratio: 1.22
+  steps:
+    mega:    "208px"
+    stat:    "150px"
+    hero:    "104px"
+    h1:      "74px"
+    h2:      "50px"
+    h3:      "35px"
+    h4:      "29px"
+    body:    "27px"
+    caption: "22px"
+    small:   "18px"
+
+colors:
+  palette:
+    espresso:  "#2B1D18"   # near-black warm brown — primary dark ground
+    bean:      "#3D2A22"   # softer brown panel
+    terracotta: "#C75D3C"  # burnt sienna — primary accent
+    ember:     "#A83B27"   # deeper red-clay
+    amber:     "#E8A33D"   # riso mustard / gold
+    sage:      "#7A8C6B"   # muted eucalyptus green
+    sageDeep:  "#536048"   # deeper sage for contrast on oat
+    oat:       "#F3E9D6"   # paper / oat-milk cream ground
+    oatDeep:   "#E7D8BD"   # toned paper panel
+    cocoa:     "#5C463B"   # warm body ink on oat
+    crema:     "#FBF4E6"   # lightest foam highlight
+  roles:
+    background: "{palette.oat}"
+    text:       "{palette.cocoa}"
+    heading:    "{palette.espresso}"
+    accent:     "{palette.terracotta}"
+    muted:      "{palette.sageDeep}"
+
+gradients:
+  brand:  "linear-gradient(96deg, #A83B27 0%, #C75D3C 45%, #E8A33D 100%)"
+  ember:  "linear-gradient(100deg, #A83B27, #C75D3C)"
+  amber:  "linear-gradient(100deg, #C75D3C, #E8A33D)"
+  sage:   "linear-gradient(100deg, #536048, #7A8C6B)"
+  roast:  "linear-gradient(105deg, #E8A33D 0%, #C75D3C 55%, #A83B27 100%)"
+
+tokens:
+  "--slide-padding": "118px"
+  "--chrome-pad": "118px"
+  "--chrome-top": "60px"
+  "--chrome-bottom": "60px"
+  "--chrome-size": "20px"
+  "--chrome-foot-size": "21px"
+  "--logo-h": "44px"
+  "--code-bg": "#2B1D18"
+  "--code-fg": "#F3E9D6"
+  "--code-inline-bg": "#E7D8BD"
+  "--code-pad": "1.05em 1.25em"
+  "--code-radius": "4px"
+  "--code-shadow": "0 18px 44px -22px rgba(43,29,24,.55)"
+
+backgrounds:
+  paper:    { type: image, src: "./assets/paper-oat.svg", fit: cover }
+  paperDeep: { type: image, src: "./assets/paper-oatdeep.svg", fit: cover }
+  roast:    { type: image, src: "./assets/roast-dark.svg", fit: cover }
+  espresso: { type: solid, color: "{palette.espresso}" }
+
+variants:
+  dark:
+    roles:
+      background: "{palette.espresso}"
+      text:       "{palette.oat}"
+      heading:    "{palette.crema}"
+      accent:     "{palette.amber}"
+      muted:      "{palette.sage}"
+
+transitions: { default: fade, duration: 480 }
+
+chrome:
+  header:
+    left: "{{kicker}}"
+    right: "EST. {{year}}"
+  footer:
+    left: "{{shop}}"
+    center: "{{footer}}"
+    right: "{{pagePadded}} — {{totalPadded}}"
+  logoPos: bottom-right
+  logo: '<svg viewBox="0 0 120 44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M10 30 h26 a10 10 0 0 1 0 20 h-9"/><path d="M10 30 v14 a6 6 0 0 0 6 6 h11"/><path d="M40 31 c5 -7 5 -13 1 -19"/><path d="M50 31 c5 -7 5 -13 1 -19"/><circle cx="86" cy="34" r="9"/><path d="M104 22 v24"/></svg>'
+
+layouts:
+
+  # ---------- COVER : big asymmetric riso poster ----------
+  cover:
+    background: roast
+    chrome: header
+    logo: false
+    variant: dark
+    areas:
+      - "kick   kick"
+      - "title  mark"
+      - "title  mark"
+      - "lede   meta"
+    rows: "auto 1fr 1fr auto"
+    cols: "1.55fr 1fr"
+    gap: "0.5em 3em"
+    padding: "118px 118px 96px"
+    slots:
+      kick:  { type: caption, style: { font: mono, color: amber, transform: uppercase, weight: "700", size: caption } }
+      title: { type: title, style: { font: display, size: hero, weight: "800", color: crema, leading: "0.95", valign: center, maxw: "13ch" } }
+      mark:  { type: free, style: { valign: center, justify: center } }
+      lede:  { type: body, style: { font: serif, size: h3, color: oat, leading: "1.3", maxw: "26ch", valign: top } }
+      meta:  { type: caption, style: { font: mono, color: sage, size: small, valign: bottom, align: right, leading: "1.6" } }
+
+  # ---------- MANIFESTO : oversized statement on paper ----------
+  manifesto:
+    background: paper
+    chrome: both
+    areas:
+      - "kick"
+      - "title"
+      - "note"
+    rows: "auto 1fr auto"
+    cols: "1fr"
+    gap: "0.7em"
+    padding: "150px 118px 120px"
+    slots:
+      kick:  { type: caption, style: { font: mono, color: ember, transform: uppercase, weight: "700", size: caption } }
+      title: { type: title, style: { font: display, size: hero, weight: "700", color: espresso, leading: "1.0", valign: center, maxw: "17ch" } }
+      note:  { type: body, style: { font: serif, size: h4, color: cocoa, italic: true, leading: "1.35", maxw: "44ch" } }
+
+  # ---------- MENU : editorial two-column list, dark side ----------
+  menu:
+    background: paper
+    chrome: both
+    areas:
+      - "head   head"
+      - "intro  list"
+    rows: "auto 1fr"
+    cols: "0.92fr 1.25fr"
+    gap: "1.4em 4em"
+    padding: "120px 118px 116px"
+    slots:
+      head:  { type: title, style: { font: display, size: h1, weight: "800", color: espresso, leading: "0.98", maxw: "16ch" } }
+      intro: { type: body, style: { font: serif, size: h4, color: cocoa, leading: "1.4", valign: top, maxw: "26ch" } }
+      list:  { type: body, style: { font: serif, size: h4, color: cocoa, leading: "1.5", valign: top } }
+
+  # ---------- FEATURE : seasonal big-stat split, dark espresso panel ----------
+  feature:
+    background: roast
+    chrome: both
+    variant: dark
+    areas:
+      - "kick   stat"
+      - "head   stat"
+      - "body   stat"
+    rows: "auto auto 1fr"
+    cols: "1.2fr 1fr"
+    gap: "0.6em 3.5em"
+    padding: "118px 118px 116px"
+    slots:
+      kick:  { type: caption, style: { font: mono, color: amber, transform: uppercase, weight: "700", size: caption } }
+      head:  { type: title, style: { font: display, size: h1, weight: "800", color: crema, leading: "0.98", maxw: "15ch" } }
+      body:  { type: body, style: { font: serif, size: h4, color: oat, leading: "1.4", valign: top, maxw: "30ch" } }
+      stat:  { type: free, style: { valign: center, justify: center } }
+
+  # ---------- CARDS : three equal-height riso cards on paper ----------
+  cards:
+    background: paperDeep
+    chrome: both
+    areas:
+      - "head head head"
+      - "c1   c2   c3"
+    rows: "auto 1fr"
+    cols: "1fr 1fr 1fr"
+    gap: "2em 1.6em"
+    padding: "120px 118px 118px"
+    slots:
+      head: { type: title, style: { font: display, size: h2, weight: "800", color: espresso, maxw: "30ch" } }
+      c1:   { type: body, style: { font: serif, size: h4, color: oat, leading: "1.34", box: bean } }
+      c2:   { type: body, style: { font: serif, size: h4, color: espresso, leading: "1.34", box: amber } }
+      c3:   { type: body, style: { font: serif, size: h4, color: crema, leading: "1.34", box: sageDeep } }
+
+  # ---------- CLOSE : full-bleed dark invitation ----------
+  close:
+    background: roast
+    chrome: footer
+    logo: false
+    variant: dark
+    align: center
+    areas:
+      - "kick"
+      - "title"
+      - "cta"
+    rows: "auto auto auto"
+    cols: "1fr"
+    gap: "0.8em"
+    padding: "118px"
+    slots:
+      kick:  { type: caption, style: { font: mono, color: amber, transform: uppercase, weight: "700", size: caption, align: center } }
+      title: { type: title, style: { font: display, size: hero, weight: "800", color: crema, leading: "0.98", align: center, maxw: "18ch" } }
+      cta:   { type: body, style: { font: serif, size: h3, color: oat, italic: true, leading: "1.35", align: center, maxw: "34ch" } }

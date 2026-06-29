@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Gate everything on the paywall/brand leak scan — nothing else runs if a forbidden
+  # editing-feature, brand, or IP token made it into the open-source tree.
+  leak-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for editing/brand/IP leaks
+        run: bash scripts/ci/leak-scan.sh .
+
+  build-test:
+    needs: leak-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium   # PDF/PPTX/image render tests need a browser
+      - run: npm run build
+      - run: npm test
+
+  license-headers:
+    needs: leak-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check every source file carries an Apache license header
+        run: node tools/dev/license-headers.mjs --check

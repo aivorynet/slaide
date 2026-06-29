@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=https://getslaide.com/schema/v1.json
+schema: slaide/1
+name: aurora
+description: A refined dark theme with a serif display face and an electric-blue accent.
+
+canvas: { aspect: "16:9", width: 1280, height: 720 }
+
+fonts:
+  sans:    { family: "Inter",          provider: google, weights: [400, 500, 600, 700] }
+  display: { family: "Fraunces",       provider: google, weights: [400, 600, 900] }
+  mono:    { family: "JetBrains Mono", provider: google, weights: [400, 600] }
+
+typeScale:
+  base: "25px"
+  ratio: 1.265
+  steps: { h1: 4, h2: 3, h3: 2, h4: 1, body: 0, caption: -1 }
+
+colors:
+  palette:
+    ink:     "#0B0B12"
+    deep:    "#191933"
+    paper:   "#F6F7FB"
+    brand:   "#6C8Cff"
+    accent:  "#FF6B9A"
+    mint:    "#54E0A8"
+    muted:   "#9AA0B8"
+    surface: "#15151F"
+  roles:
+    background: "{palette.ink}"
+    surface:    "{palette.surface}"
+    text:       "{palette.paper}"
+    heading:    "{palette.paper}"
+    accent:     "{palette.brand}"
+    link:       "{palette.accent}"
+    muted:      "{palette.muted}"
+
+backgrounds:
+  cover:   { type: gradient, stops: ["#0B0B12", "#191933", "#0B0B12"], angle: 130 }
+  section: { type: gradient, stops: ["#6C8Cff", "#FF6B9A"], angle: 120 }
+  deep:    { type: gradient, stops: ["#0B0B12", "#15151F"], angle: 160 }
+
+variants:
+  light:
+    roles:
+      background: "{palette.paper}"
+      surface:    "#FFFFFF"
+      text:       "{palette.ink}"
+      heading:    "{palette.ink}"
+      muted:      "#5A6072"
+
+transitions: { default: fade, duration: 420 }
+
+layouts:
+  cover:
+    background: cover
+    align: center
+    areas: ["title", "subtitle"]
+    rows: "auto auto"
+    slots:
+      title:    { type: title,    style: { font: display, size: h1, weight: "900" } }
+      subtitle: { type: subtitle, style: { size: h3, color: accent } }
+
+  title-content:
+    areas: ["title", "body"]
+    rows: "auto 1fr"
+    slots:
+      title: { type: title, style: { size: h2 } }
+      body:  { type: body }
+
+  section:
+    background: section
+    align: center
+    areas: ["title"]
+    rows: "1fr"
+    slots:
+      title: { type: title, style: { font: display, size: h1, weight: "900", align: center } }
+
+  two-cols:
+    areas: ["title title", "left right"]
+    rows: "auto 1fr"
+    cols: "1fr 1fr"
+    gap: "1.4em"
+    slots:
+      title: { type: title, style: { size: h2 } }
+      left:  { type: body }
+      right: { type: body }
+
+  image-right:
+    areas: ["title title", "body image"]
+    rows: "auto 1fr"
+    cols: "1.1fr 1fr"
+    gap: "1.4em"
+    slots:
+      title: { type: title, style: { size: h2 } }
+      body:  { type: body }
+      image: { type: image }
+
+  image-left:
+    areas: ["title title", "image body"]
+    rows: "auto 1fr"
+    cols: "1fr 1.1fr"
+    gap: "1.4em"
+    slots:
+      title: { type: title, style: { size: h2 } }
+      image: { type: image }
+      body:  { type: body }
+
+  content-sidebar:
+    areas: ["title sidebar", "body sidebar"]
+    rows: "auto 1fr"
+    cols: "1.7fr 1fr"
+    gap: "1.4em"
+    slots:
+      title:   { type: title, style: { size: h2 } }
+      body:    { type: body }
+      sidebar: { type: body, style: { size: caption, color: muted } }
+
+  quote:
+    align: center
+    areas: ["quote"]
+    rows: "1fr"
+    slots:
+      quote: { type: quote, style: { align: center } }
+
+  full-bleed:
+    areas: ["media"]
+    rows: "1fr"
+    padding: "0"
+    slots:
+      media: { type: media }
+
+  blank:
+    areas: ["body"]
+    rows: "1fr"
+    slots:
+      body: { type: body }

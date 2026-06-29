@@ -1,0 +1,106 @@
+---
+master: ./ember-oat.slaide.yaml
+title: The Daily Grind
+shop: THE DAILY GRIND · ROASTERY
+kicker: Specialty coffee
+year: "2019"
+~footer: Brewed, not assembled
+---
+layout: cover
+footer: Hand-roasted in small batches
+---
+:: kick ::
+Single-origin · Small-batch · Slow mornings
+:: title ::
+You don't make the deck. The barista does.
+:: mark ::
+```svg
+<svg viewBox="0 0 240 240" width="400" height="400" fill="none" stroke="#E8A33D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M58 150 q14 -22 0 -44 q-14 -22 0 -44" stroke="#C75D3C" opacity="0.9"/>
+  <path d="M96 150 q14 -22 0 -44 q-14 -22 0 -44" stroke="#E8A33D" opacity="0.9"/>
+  <path d="M134 150 q14 -22 0 -44 q-14 -22 0 -44" stroke="#7A8C6B" opacity="0.9"/>
+  <path d="M40 156 h138 l-12 56 a14 14 0 0 1 -14 12 H66 a14 14 0 0 1 -14 -12 z" fill="#2B1D18" stroke="#F3E9D6" stroke-width="5"/>
+  <path d="M178 168 h20 a18 18 0 0 1 0 36 h-13" stroke="#F3E9D6" stroke-width="5"/>
+</svg>
+```
+:: lede ::
+The morning ritual changed. Now you just say *"the usual,"* and trust what lands in the cup.
+:: meta ::
+NO. 01 / THE RITUAL
+9th & Maple
+Open till the beans run out
+---
+layout: manifesto
+footer: The pour-over problem
+---
+:: kick ::
+The problem with the old way
+:: title ::
+The big chains are built for machines, not for mornings.
+:: note ::
+Industrial espresso is a vat of bitter, over-extracted XML — engineered for throughput, not for taste. Order a deck from it and what lands is misaligned, off-brand, lukewarm. So you spend the "saved" hour fixing the foam by hand.
+---
+layout: menu
+footer: Today's offering
+---
+:: head ::
+The house pour, the way it should arrive.
+:: intro ::
+One plain order. One clean cup. The kind of thing a regular gets right on the first try — no sending it back, no re-pulling the shot.
+:: list ::
+**01 — The Usual** · [single source]{.sageDeep}  `~10 KB`
+*Small, plain, honest. No bloat in the cup.*
+
+**02 — One Pass** · [poured to order]{.sageDeep}  `1 pull`
+*The whole deck, done in a single pour. You review and present.*
+
+**03 — Barely Touched** · [hands-off]{.sageDeep}  `0 fuss`
+*The human stirs once, maybe. The craft is already in the bean.*
+---
+layout: feature
+footer: This season's roast
+---
+:: kick ::
+Seasonal feature — limited batch
+:: head ::
+A real, hand-roasted deck, matched cup-for-cup.
+:: body ::
+We poured it blind against a barista's hand-built original. Side by side, you couldn't taste the difference — the crema held, the color held, nothing drifted.
+:: stat ::
+```svg
+<svg viewBox="0 0 480 300" width="480" height="300" fill="none">
+  <text x="0" y="150" font-family="Bricolage Grotesque, sans-serif" font-weight="800" font-size="210" fill="#E8A33D">92</text>
+  <text x="250" y="150" font-family="Space Mono, monospace" font-weight="700" font-size="64" fill="#C75D3C">%</text>
+  <text x="6" y="210" font-family="Space Mono, monospace" font-weight="700" font-size="28" fill="#F3E9D6" letter-spacing="3">— UP TO 97% PIXEL MATCH</text>
+  <line x1="6" y1="236" x2="470" y2="236" stroke="#7A8C6B" stroke-width="3"/>
+  <text x="6" y="276" font-family="Newsreader, serif" font-style="italic" font-size="29" fill="#E7D8BD">against the hand-pulled original.</text>
+</svg>
+```
+---
+layout: cards
+footer: One bean, every cup
+---
+:: head ::
+One source. Every cup. No house blend you can't leave.
+:: c1 ::
+**Pour it three ways** >>>
+
+A web cup, a high-fidelity print, an editable PowerPoint — same bean, no drift between them.
+:: c2 ::
+**Bring your own beans** >>>
+
+We *import* your old PowerPoint and Keynote, and *export* editable .pptx right back out. No lock-in.
+:: c3 ::
+**The roaster never sleeps** >>>
+
+An MCP server lets your agents grind, taste, and serve the whole deck end to end.
+---
+layout: close
+footer: See you at the counter
+---
+:: kick ::
+Last call
+:: title ::
+Order the deck. For once, trust the cup.
+:: cta ::
+Point your AI at the counter and walk out with a flawless, on-brand, editable deck — poured in one pass.

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 470" fill="none" font-family="Inter, sans-serif">
+  <defs>
+    <style>
+      .box{fill:#121a2b;stroke:#2b3650;stroke-width:1.4;}
+      .lbl{fill:#aeb6c9;font-size:18px;}
+      .price{fill:#e7ebf3;font-size:18px;font-weight:600;}
+      .edge{stroke:#2b3650;stroke-width:1.6;fill:none;}
+      .hi{stroke:#34d399;}
+      .hibox{fill:#0f2a20;stroke:#34d399;stroke-width:1.6;}
+      .hitext{fill:#34d399;font-size:18px;font-weight:600;}
+    </style>
+  </defs>
+  <path class="edge" d="M330 235 C 390 235, 380 52, 440 52"/>
+  <path class="edge" d="M330 235 C 390 235, 380 116, 440 116"/>
+  <path class="edge hi" d="M330 235 C 395 235, 385 180, 440 180"/>
+  <path class="edge" d="M330 235 C 400 235, 400 244, 440 244"/>
+  <path class="edge" d="M330 235 C 390 235, 385 308, 440 308"/>
+  <path class="edge" d="M330 235 C 385 235, 380 372, 440 372"/>
+  <path class="edge" d="M330 235 C 380 235, 375 430, 440 430"/>
+  <path class="edge" d="M104 235 L168 235"/>
+
+  <rect class="box" x="16" y="214" width="88" height="42" rx="9"/>
+  <text class="lbl" x="60" y="240" text-anchor="middle">You</text>
+
+  <rect x="168" y="200" width="164" height="70" rx="11" fill="#0e1830" stroke="#5b8cff" stroke-width="1.7"/>
+  <text x="250" y="232" text-anchor="middle" fill="#ffffff" font-size="21" font-weight="700">Smart Route</text>
+  <text x="250" y="255" text-anchor="middle" fill="#8b93a7" font-size="13" font-family="JetBrains Mono, monospace">/v1/route</text>
+
+  <g>
+    <rect class="box" x="440" y="34"  width="150" height="36" rx="9"/><text class="lbl" x="458" y="57">cirrus</text><text class="price" x="574" y="57" text-anchor="end">$4.10</text>
+    <rect class="box" x="440" y="98"  width="150" height="36" rx="9"/><text class="lbl" x="458" y="121">vapor</text><text class="price" x="574" y="121" text-anchor="end">$1.20</text>
+    <rect class="hibox" x="440" y="162" width="150" height="36" rx="9"/><text class="hitext" x="458" y="185">bolt</text><text class="hitext" x="574" y="185" text-anchor="end">$1.15</text>
+    <rect class="box" x="440" y="226" width="150" height="36" rx="9"/><text class="lbl" x="458" y="249">forge</text><text class="price" x="574" y="249" text-anchor="end">$1.49</text>
+    <rect class="box" x="440" y="290" width="150" height="36" rx="9"/><text class="lbl" x="458" y="313">drift</text><text class="price" x="574" y="313" text-anchor="end">$5.20</text>
+    <rect class="box" x="440" y="354" width="150" height="36" rx="9"/><text class="lbl" x="458" y="377">nimbus</text><text class="price" x="574" y="377" text-anchor="end">$2.19</text>
+    <rect class="box" x="440" y="418" width="150" height="36" rx="9"/><text class="lbl" x="515" y="441" text-anchor="middle">+ others</text>
+  </g>
+</svg>

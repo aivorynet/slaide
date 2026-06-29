@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <filter id="grainD" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="3" stitchTiles="stitch" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.07 0"/>
+    </filter>
+    <radialGradient id="glow" cx="74%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#5A2C1E"/>
+      <stop offset="40%" stop-color="#3A231B"/>
+      <stop offset="100%" stop-color="#23150F"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="#23150F"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <!-- warm ember halftone, bottom-left -->
+  <g fill="#E8A33D" opacity="0.10">
+    <circle cx="120" cy="900" r="7"/><circle cx="190" cy="900" r="7"/><circle cx="260" cy="900" r="7"/>
+    <circle cx="120" cy="970" r="7"/><circle cx="190" cy="970" r="7"/><circle cx="260" cy="970" r="7"/>
+    <circle cx="155" cy="935" r="5"/><circle cx="225" cy="935" r="5"/>
+  </g>
+  <!-- soft amber arc top-right, riso registration mark feel -->
+  <circle cx="1620" cy="240" r="430" fill="none" stroke="#C75D3C" stroke-width="2" opacity="0.12"/>
+  <rect width="1920" height="1080" filter="url(#grainD)"/>
+</svg>

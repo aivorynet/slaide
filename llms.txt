@@ -1,0 +1,24 @@
+# slaide
+
+> slaide is a plain-text slide language: one `.slaide` file (Markdown body + a small YAML header that references a reusable visual "master") compiles to a navigable web presentation and a high-fidelity PDF. It is designed to be trivial for AI agents to author and edit, while producing output that looks great for human audiences.
+
+Author content in Markdown; the master carries fonts, a modular type scale, two-tier color tokens, gradients, backgrounds, named grid layouts, and header/footer chrome. Slides are separated by `---`. `:: name ::` routes content into a layout slot. `>>>` = build step, `??? text` = speaker note, `{#id}` + `transition: morph` = shared-element morph. Inline styling: `[text]{.blue .lg}` / `[x]{.grad}`. Images `![](img){.round width=200px anchor:"x% y% w% h%"}`, video/audio, inline ```` ```svg ````, sandboxed ```` ```embed ````/```` ```widget ````. Header/footer/page-number/logo + `{{placeholders}}` come from the master.
+
+Always validate before rendering (`slaide validate <file>`, or `--strict` to fail on warnings); the validator returns line-numbered diagnostics for self-correction — including unknown slot names, unknown inline classes/gradients, malformed YAML, and config-shaped bodies misread as frontmatter. Run `slaide slots <file>` first to list the legal slot / colour / gradient / size names for the deck's master, so `:: name ::` and `[t]{.class}` reference real tokens. Escape a literal sigil with a leading backslash: `\::`, `\???`, `\>>>`, `\[t]{.c}`.
+
+## Docs
+- [Language spec](docs/spec.md): file structure, frontmatter, regions, builds, notes, inline spans, images/media, embeds, chrome, placeholders.
+- [Master / theme authoring](docs/themes.md): fonts, type scale, colors, gradients, tokens, chrome, layouts, slot styles, mark classes.
+- [Grammar](docs/grammar.md): formal EBNF.
+- [README](README.md): install, CLI commands, architecture.
+
+## Commands
+- `slaide new <file> --title "X"` — scaffold
+- `slaide validate <file> [--strict]` — validate (do this before rendering)
+- `slaide slots <file>` — list the master's slot/colour/gradient/size vocabulary
+- `slaide build <file> --out out` — build self-contained HTML
+- `slaide export <file> --pdf out/x.pdf` — export PDF
+- `slaide dev <file>` — live preview
+- `slaide import <deck.pptx|.key> --out <dir>` — convert PowerPoint/Keynote → slaide
+- `slaide themes` — list themes & layouts
+- `slaide mcp` — run the MCP server (tools: slaide_validate, slaide_render_html, slaide_render_pdf, slaide_scaffold, slaide_list_themes; resources: slaide://spec, slaide://themes)

@@ -1,0 +1,202 @@
+# yaml-language-server: $schema=https://getslaide.com/schema/v1.json
+schema: slaide/1
+name: slaide-brand
+description: >-
+  The slaide house theme — warm cream surface, slate-to-azure brand gradient,
+  IBM Plex Sans + Fraunces + JetBrains Mono. Dark-glow cover/closing. Self-contained.
+
+canvas: { aspect: "16:9", width: 1920, height: 1080 }
+
+# ── Fonts (all Google) ─────────────────────────────────────────────────────
+fonts:
+  sans:    { family: "IBM Plex Sans", provider: google, weights: [400, 500, 600, 700] }
+  display: { family: "IBM Plex Sans", provider: google, weights: [600, 700] }
+  serif:   { family: "Fraunces",      provider: google, weights: [600, 700] }
+  mono:    { family: "JetBrains Mono", provider: google, weights: [400, 500, 700] }
+
+# ── Type scale ─────────────────────────────────────────────────────────────
+typeScale:
+  base: "27px"
+  ratio: 1.2
+  steps:
+    stat:    "132px"
+    hero:    "108px"
+    h1:      "74px"
+    h2:      "48px"
+    h3:      "34px"
+    h4:      "27px"
+    body:    "27px"
+    caption: "21px"
+    small:   "18px"
+
+# ── Colour: two tier ───────────────────────────────────────────────────────
+colors:
+  palette:
+    cream:     "#FBF7F0"
+    cream2:    "#F3ECE0"
+    paper:     "#FFFFFF"
+    rule:      "#ECE3D4"
+    rule2:     "#E0D6C5"
+    ink:       "#15120E"
+    ink2:      "#3A352D"
+    inkmuted:  "#4A4439"
+    inksoft:   "#6B6358"
+    inklight:  "#6D6354"
+    azureDeep: "#243B6B"
+    azure:     "#35608F"
+    azureLight: "#6FA8DC"
+    teal:      "#1FB8A6"
+    red:       "#AB4029"
+    dark:      "#15120E"
+    panel:     "#0E0B07"
+    creamSoft: "#D9D2C5"
+    creamDim:  "#A79E8E"
+  roles:
+    background: "{palette.cream}"
+    surface:    "{palette.paper}"
+    text:       "{palette.ink2}"
+    heading:    "{palette.ink}"
+    accent:     "{palette.azureDeep}"
+    link:       "{palette.azureDeep}"
+    muted:      "{palette.inksoft}"
+
+# ── Gradients (brand fills) ────────────────────────────────────────────────
+gradients:
+  brand: "linear-gradient(95deg, #243B6B, #3E6FB0 52%, #6FA8DC)"
+  hero:  "linear-gradient(96deg, #9CC4EC, #6FA8DC 48%, #4E84C4)"
+  deep:  "linear-gradient(135deg, #243B6B, #3E6FB0 70%, #5C93CF)"
+
+# ── Tokens ─────────────────────────────────────────────────────────────────
+tokens:
+  "--slide-padding": "128px"
+  "--chrome-pad": "128px"
+  "--chrome-top": "56px"
+  "--chrome-bottom": "58px"
+  "--chrome-size": "20px"
+  "--chrome-foot-size": "21px"
+  "--chrome-page-size": "20px"
+  "--logo-h": "30px"
+  "--chart-colors": "#3E6FB0, #6FA8DC, #243B6B, #1FB8A6, #9CC4EC"
+  "--code-bg": "#0E0B07"
+  "--code-fg": "#FBF7F0"
+  "--code-inline-bg": "#F0E8D9"
+  "--code-pad": "1.2em 1.45em"
+  "--code-radius": "16px"
+  "--code-shadow": "0 26px 70px -28px rgba(21,18,14,.55)"
+
+# ── Backgrounds ────────────────────────────────────────────────────────────
+backgrounds:
+  cream:    { type: solid, color: "{palette.cream}" }
+  paper:    { type: solid, color: "{palette.paper}" }
+  glow:     { type: image, src: "./assets/cover-glow.svg", fit: cover }
+  glowEnd:  { type: image, src: "./assets/closing-glow.svg", fit: cover }
+  sunrise:  { type: image, src: "./assets/sunrise.jpg", fit: cover, dim: 0.5 }
+
+# ── Dark variant (for glow slides) ─────────────────────────────────────────
+variants:
+  dark:
+    roles:
+      background: "{palette.dark}"
+      surface:    "{palette.panel}"
+      text:       "{palette.creamSoft}"
+      heading:    "{palette.cream}"
+      accent:     "{palette.azureLight}"
+      muted:      "{palette.creamDim}"
+
+transitions: { default: fade, duration: 460 }
+
+# ── Chrome ─────────────────────────────────────────────────────────────────
+chrome:
+  footer: { center: "{{footer}}", right: "{{pagePadded}} · {{totalPadded}}" }
+  logoPos: bottom-left
+  logo: '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lg" x1="4" y1="5" x2="44" y2="43" gradientUnits="userSpaceOnUse"><stop stop-color="#243B6B"/><stop offset=".52" stop-color="#3E6FB0"/><stop offset="1" stop-color="#6FA8DC"/></linearGradient></defs><rect x="4" y="5" width="40" height="38" rx="11" fill="url(#lg)"/><rect x="11" y="12.5" width="19" height="14.5" rx="2.6" fill="#fff" opacity=".42"/><rect x="16.5" y="19.5" width="19" height="16.5" rx="2.8" fill="#fff"/><rect x="20" y="24" width="11.5" height="2.9" rx="1.45" fill="#3E6FB0"/><rect x="20" y="29.2" width="7.5" height="2.5" rx="1.25" fill="#6FA8DC" opacity=".6"/></svg>'
+
+# ── Layouts ────────────────────────────────────────────────────────────────
+layouts:
+
+  # 1 — Cover: dark glow, big gradient hook (left) + a floating "beautiful slide" hero (right)
+  cover:
+    background: glow
+    variant: dark
+    chrome: false
+    logo: false
+    align: center
+    areas:
+      - "eyebrow visual"
+      - "title   visual"
+      - "tagline visual"
+      - "meta    visual"
+    rows: "auto auto auto auto"
+    cols: "1.04fr 0.96fr"
+    gap: "0.4em 3.4em"
+    padding: "132px 128px"
+    slots:
+      eyebrow: { type: caption, style: { font: mono, size: caption, color: azureLight, weight: "500", transform: uppercase } }
+      title:   { type: title,   style: { font: display, size: hero, color: cream, weight: "700", leading: "0.94", maxw: "14ch" } }
+      tagline: { type: subtitle, style: { size: h2, color: cream, weight: "400", maxw: "22ch", leading: "1.18" } }
+      meta:    { type: caption, style: { font: mono, size: small, color: creamSoft, weight: "400", transform: uppercase } }
+      visual:  { type: image,   style: { valign: center, justify: center } }
+
+  # 2 — Problem: headline + code panel
+  problem:
+    background: cream
+    align: center
+    areas: ["eyebrow code", "head code", "sub code"]
+    rows: "auto auto auto"
+    cols: "0.9fr 1.1fr"
+    gap: "0.55em 4em"
+    padding: "128px 120px 150px"
+    slots:
+      eyebrow: { type: caption, style: { font: mono, size: caption, color: azureDeep, weight: "500", transform: uppercase } }
+      head:    { type: title,   style: { size: h1, weight: "700", color: ink, leading: "1.0", maxw: "13ch" } }
+      sub:     { type: body,    style: { size: h4, color: inkmuted, weight: "400", leading: "1.4", maxw: "30ch", valign: top } }
+      code:    { type: body,    style: { box: paper, size: small, color: inkmuted, leading: "1.55", valign: top } }
+
+  # 3 — Concept: the whole idea in one slide (head + body + showcase SVG)
+  concept:
+    background: cream
+    align: center
+    areas: ["eyebrow preview", "head preview", "body preview"]
+    rows: "auto auto 1fr"
+    cols: "0.88fr 1.1fr"
+    gap: "0.5em 4em"
+    padding: "120px 120px 150px"
+    slots:
+      eyebrow: { type: caption, style: { font: mono, size: caption, color: azureDeep, weight: "500", transform: uppercase } }
+      head:    { type: title,   style: { size: h1, weight: "700", color: ink, leading: "1.0", maxw: "13ch" } }
+      body:    { type: body,    style: { size: h4, color: inkmuted, weight: "400", leading: "1.45", maxw: "30ch", valign: top } }
+      preview: { type: image,   style: { valign: center } }
+
+  # 4 — Features: eyebrow + head + a clean 6-tile feature grid
+  features:
+    background: cream
+    align: center
+    areas: ["eyebrow", "head", "grid"]
+    rows: "auto auto 1fr"
+    cols: "1fr"
+    gap: "0.5em"
+    padding: "100px 128px 112px"
+    slots:
+      eyebrow: { type: caption, style: { font: mono, size: caption, color: azureDeep, weight: "500", transform: uppercase } }
+      head:    { type: title,   style: { size: h1, weight: "700", color: ink, leading: "1.0", maxw: "26ch" } }
+      grid:    { type: image,   style: { valign: center } }
+
+  # 5 — Closing: full-bleed sunrise, mark + CTA button
+  closing:
+    background: sunrise
+    variant: dark
+    chrome: false
+    logo: false
+    align: center
+    areas: ["mark", "head", "sub", "cta"]
+    rows: "auto auto auto auto"
+    cols: "1fr"
+    gap: "0.6em"
+    padding: "126px 140px 60px"
+    slots:
+      mark:   { type: image,    style: { justify: center } }
+      head:   { type: title,    style: { font: display, size: h1, color: cream, weight: "700", align: center, leading: "1.02", maxw: "18ch", justify: center } }
+      sub:    { type: subtitle, style: { size: h3, color: cream, weight: "400", align: center, maxw: "32ch", justify: center, leading: "1.35" } }
+      cta:    { type: caption,  style: { font: mono, size: body, color: cream, weight: "600", bg: "var(--palette-azureDeep)", pad: "0.82em 2em", radius: "999px", justify: center } }
+      # anchored to the bottom-right corner (out of the centered stack)
+      credit: { type: caption,  style: { font: mono, size: small, color: creamDim, align: right, valign: bottom, anchor: "52% 90% 41% 8%" } }

@@ -1,0 +1,1119 @@
+<style>
+/* ===== slaide viewer chrome — auto-hiding overlay ribbon ================== *
+ * Injected before </body> over the engine-rendered deck. Talks to Rust via
+ * window.ipc.postMessage(...) and drives the slide via the window.slaide API.
+ * All ids/classes are namespaced `slv-` so they never collide with the deck's
+ * own `.sl-*` classes. The chrome has its OWN colour theme (light by default —
+ * mirroring the Slaide Pro web look — flipped to dark via html[data-slv-theme="dark"],
+ * set from the saved `theme` pref). It still pulls the deck's --color-accent for active
+ * states so it feels of-a-piece. This is app chrome, NOT slide content.          */
+#slv-bar, #slv-thumbs, #slv-handle, #slv-file-menu, #slv-mon-menu, #slv-more-menu{
+  /* light (default) — warm cream paper, azure brand, ink text */
+  --slv-bg:rgba(245,239,228,.85);
+  --slv-bg-solid:#FBF7F0;
+  --slv-line:rgba(21,18,14,.12);
+  --slv-ink:#15120E;
+  --slv-dim:#6B6358;
+  --slv-accent:var(--color-accent,#3E6FB0);
+  --slv-hover:rgba(21,18,14,.06);
+  --slv-active:rgba(21,18,14,.10);
+  --slv-soft:rgba(21,18,14,.05);
+  --slv-scroll:rgba(21,18,14,.22);
+  --slv-scroll-hover:rgba(21,18,14,.34);
+  --slv-press-bg:color-mix(in srgb, var(--slv-accent) 15%, transparent);
+  --slv-press-ink:var(--slv-accent);
+  --slv-thumb-bg:#ECE3D4;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  box-sizing:border-box;
+}
+/* dark theme — the original chrome palette, opt-in via the saved theme pref */
+html[data-slv-theme="dark"] #slv-bar, html[data-slv-theme="dark"] #slv-thumbs,
+html[data-slv-theme="dark"] #slv-handle, html[data-slv-theme="dark"] #slv-file-menu,
+html[data-slv-theme="dark"] #slv-mon-menu, html[data-slv-theme="dark"] #slv-more-menu{
+  --slv-bg:rgba(18,20,28,.82);
+  --slv-bg-solid:#14161e;
+  --slv-line:rgba(255,255,255,.08);
+  --slv-ink:#e7e9f2;
+  --slv-dim:#9aa0b8;
+  --slv-accent:var(--color-accent,#6C8Cff);
+  --slv-hover:rgba(255,255,255,.09);
+  --slv-active:rgba(255,255,255,.15);
+  --slv-soft:rgba(255,255,255,.06);
+  --slv-scroll:rgba(255,255,255,.2);
+  --slv-scroll-hover:rgba(255,255,255,.34);
+  --slv-press-bg:color-mix(in srgb, var(--slv-accent) 26%, transparent);
+  --slv-press-ink:#fff;
+  --slv-thumb-bg:#000;
+}
+#slv-bar *, #slv-thumbs *, #slv-file-menu *{ box-sizing:border-box; }
+
+/* ---- the bar ------------------------------------------------------------- */
+#slv-bar{
+  position:fixed; top:0; left:0; right:0; z-index:2147483647;
+  display:flex; flex-direction:column;
+  background:var(--slv-bg);
+  backdrop-filter:blur(18px) saturate(140%); -webkit-backdrop-filter:blur(18px) saturate(140%);
+  border-bottom:1px solid var(--slv-line);
+  box-shadow:0 12px 34px -16px rgba(0,0,0,.75);
+  color:var(--slv-ink);
+  transform:translateY(calc(-100% - 18px));
+  transition:transform .18s cubic-bezier(.4,0,.2,1);
+}
+body.slv-shown #slv-bar{ transform:none; }
+
+#slv-row{ display:flex; align-items:center; gap:4px; padding:7px 10px; min-height:46px; }
+.slv-sp{ flex:1 1 auto; }
+.slv-div{ width:1px; align-self:stretch; margin:5px 6px; background:var(--slv-line); }
+.slv-grp{ display:flex; align-items:center; gap:3px; }
+.slv-brand{ display:flex; align-items:center; flex:none; padding:0 4px 0 2px; }
+.slv-brand svg{ width:24px; height:24px; display:block; filter:drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+
+/* ---- buttons ------------------------------------------------------------- */
+.slv-btn{
+  all:unset; box-sizing:border-box; cursor:pointer;
+  display:inline-flex; align-items:center; gap:7px;
+  height:32px; padding:0 11px; border-radius:8px;
+  color:var(--slv-ink); font-size:13px; font-weight:550; line-height:1;
+  white-space:nowrap; user-select:none;
+  transition:background .12s, color .12s, filter .12s;
+}
+.slv-btn.slv-icon{ padding:0 8px; }
+.slv-btn svg{ width:18px; height:18px; display:block; flex:none; }
+.slv-btn:hover{ background:var(--slv-hover); }
+.slv-btn:active{ background:var(--slv-active); }
+.slv-btn:focus-visible{ outline:2px solid var(--slv-accent); outline-offset:1px; }
+.slv-btn[aria-pressed="true"]{ background:var(--slv-press-bg); color:var(--slv-press-ink); }
+.slv-btn[disabled]{ opacity:.4; cursor:default; }
+
+/* ---- navigate counter ---------------------------------------------------- */
+.slv-count{ display:inline-flex; align-items:center; gap:3px; height:30px; padding:0 8px;
+  border-radius:8px; background:var(--slv-soft); font-size:13px; font-weight:600; }
+#slv-cur{ all:unset; width:2.4ch; text-align:center; color:var(--slv-ink); font:inherit; border-radius:4px; }
+#slv-cur:focus{ background:var(--slv-active); outline:none; }
+#slv-total{ color:var(--slv-dim); }
+
+/* ---- zoom ---------------------------------------------------------------- */
+#slv-zoom{ display:flex; align-items:center; gap:1px; height:30px; padding:0 3px;
+  border-radius:8px; background:var(--slv-soft); }
+#slv-zoom .slv-btn{ height:26px; padding:0 6px; }
+#slv-zlevel{ min-width:44px; text-align:center; font-size:12px; font-weight:600; color:var(--slv-dim); }
+
+/* ---- export dropdown ----------------------------------------------------- */
+#slv-file-menu{
+  position:fixed; z-index:2147483647; min-width:172px; display:none;
+  background:var(--slv-bg-solid); border:1px solid var(--slv-line); border-radius:10px;
+  box-shadow:0 18px 50px -16px rgba(0,0,0,.82); padding:6px;
+}
+#slv-file-menu.slv-open{ display:block; }
+#slv-file-menu .slv-item{ all:unset; display:flex; align-items:center; gap:10px; width:100%;
+  padding:9px 10px; border-radius:7px; font-size:13px; color:var(--slv-ink); cursor:pointer; }
+#slv-file-menu .slv-item:hover{ background:var(--slv-hover); }
+#slv-file-menu .slv-item[hidden]{ display:none; }
+#slv-file-menu .slv-item.slv-off{ opacity:.4; cursor:not-allowed; }
+#slv-file-menu .slv-item.slv-off:hover{ background:none; }
+#slv-file-menu .slv-item svg{ width:16px; height:16px; color:var(--slv-dim); flex:none; }
+.slv-menu-div{ height:1px; margin:5px 6px; background:var(--slv-line); }
+/* Present button while presenting → a "Stop" affordance */
+#slv-present.slv-present-on{ background:color-mix(in srgb, #e5484d 28%, transparent); color:#fff; }
+/* Presenting: this is a presentation, so ALL chrome is gone — ribbon, navigator, pulldown handle,
+   the editor inspector / grips / selection overlay / theme studio. The deck owns the screen. */
+body.slv-presenting #slv-bar, body.slv-presenting #slv-thumbs, body.slv-presenting #slv-handle,
+body.slv-presenting .sl-insp, body.slv-presenting .sl-grip, body.slv-presenting .sl-edit-overlay,
+body.slv-presenting .sl-studio, body.slv-presenting .sl-mpanel{ display:none !important; }
+body.slv-presenting{ --sl-dock-right:0px !important; --slv-bar-h:0px !important; cursor:none; }
+/* monitor picker dropdown (only when >1 display) */
+#slv-mon-menu{ position:fixed; z-index:2147483647; min-width:190px; display:none;
+  background:var(--slv-bg-solid); border:1px solid var(--slv-line); border-radius:10px;
+  box-shadow:0 18px 50px -16px rgba(0,0,0,.82); padding:6px; }
+#slv-mon-menu.slv-open{ display:block; }
+#slv-mon-menu .slv-item{ all:unset; display:flex; align-items:center; gap:9px; width:100%;
+  padding:8px 10px; border-radius:7px; font-size:12.5px; color:var(--slv-ink); cursor:pointer; }
+#slv-mon-menu .slv-item:hover{ background:var(--slv-hover); }
+#slv-present-caret{ padding:0 7px; }
+
+/* ---- reveal handle (peeks when the bar is hidden) ------------------------ */
+#slv-handle{
+  position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:2147483646;
+  display:flex; align-items:center; justify-content:center;
+  width:48px; height:18px; border-radius:0 0 11px 11px;
+  background:var(--slv-bg); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--slv-line); border-top:none; color:var(--slv-dim); cursor:pointer;
+  transition:opacity .18s, transform .18s;
+}
+#slv-handle svg{ width:18px; height:10px; }
+#slv-handle:hover{ color:var(--slv-ink); }
+body.slv-shown #slv-handle, body.slv-pinned #slv-handle{ opacity:0; pointer-events:none; transform:translateX(-50%) translateY(-100%); }
+
+/* ---- thumbnail navigator (left drawer) ----------------------------------- */
+#slv-thumbs{
+  position:fixed; top:0; left:0; bottom:0; z-index:2147483645; width:196px;
+  background:var(--slv-bg); backdrop-filter:blur(18px) saturate(140%); -webkit-backdrop-filter:blur(18px) saturate(140%);
+  border-right:1px solid var(--slv-line); box-shadow:18px 0 50px -28px rgba(0,0,0,.8);
+  transform:translateX(-110%); transition:transform .2s cubic-bezier(.4,0,.2,1);
+  display:flex; flex-direction:column; color:var(--slv-ink);
+}
+#slv-thumbs.slv-open{ transform:none; }
+/* Clear the toolbar with its LIVE height (--slv-bar-h, republished on edit-mode toggle) so the
+   header + top thumbnails aren't hidden behind the taller edit-mode bar. */
+#slv-thumbs-head{ padding:calc(var(--slv-bar-h, 52px) + 12px) 16px 8px; font-size:11px; font-weight:700; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--slv-dim); }
+#slv-thumbs-list{ flex:1; overflow-y:auto; overflow-x:hidden; padding:4px 12px 18px; display:flex; flex-direction:column; gap:11px; }
+/* thin, unobtrusive scrollbars (Chromium + standard) for the viewer chrome */
+#slv-thumbs-list, #slv-file-menu, #slv-notes{ scrollbar-width:thin; scrollbar-color:var(--slv-scroll) transparent; }
+.slv-scroll::-webkit-scrollbar, #slv-thumbs-list::-webkit-scrollbar, #slv-file-menu::-webkit-scrollbar{ width:8px; height:8px; }
+#slv-thumbs-list::-webkit-scrollbar-track, #slv-file-menu::-webkit-scrollbar-track{ background:transparent; }
+#slv-thumbs-list::-webkit-scrollbar-thumb, #slv-file-menu::-webkit-scrollbar-thumb{ background:var(--slv-scroll); border-radius:8px; border:2px solid transparent; background-clip:padding-box; }
+#slv-thumbs-list::-webkit-scrollbar-thumb:hover, #slv-file-menu::-webkit-scrollbar-thumb:hover{ background:var(--slv-scroll-hover); background-clip:padding-box; }
+#slv-thumbs-list::-webkit-scrollbar-corner{ background:transparent; }
+.slv-thumb{ all:unset; cursor:pointer; display:flex; align-items:center; gap:10px; border-radius:8px; padding:3px; }
+.slv-thumb-frame{ position:relative; overflow:hidden; border-radius:6px; border:1px solid var(--slv-line);
+  background:var(--slv-thumb-bg); flex:none; box-shadow:0 4px 12px -6px rgba(0,0,0,.6); }
+.slv-thumb-box{ position:relative; transform-origin:0 0; }
+/* Thumbnails are navigate-only previews. They're clones of editable slides, so in edit mode they
+   would otherwise inherit contenteditable + the shapes' pointer-events/cursor:move + selectable
+   text. Make the whole preview inert so the only action is the thumbnail button → go to slide. */
+.slv-thumb-frame, .slv-thumb-frame *{ pointer-events:none !important; -webkit-user-select:none !important; user-select:none !important; }
+.slv-thumb-n{ font-size:11px; font-weight:600; color:var(--slv-dim); }
+.slv-thumb:hover .slv-thumb-frame{ border-color:var(--slv-active); }
+.slv-thumb-active .slv-thumb-frame{ border-color:var(--slv-accent); box-shadow:0 0 0 2px var(--slv-accent); }
+.slv-thumb-active .slv-thumb-n{ color:var(--slv-ink); }
+
+@media (prefers-reduced-motion: reduce){
+  #slv-bar, #slv-thumbs, #slv-handle{ transition:none; }
+}
+@media print{ #slv-bar, #slv-thumbs, #slv-handle, #slv-file-menu{ display:none !important; } }
+
+/* ---- edit mode: a tabbed ribbon (tab strip + command band) --------------- */
+#slv-edit-grp[hidden], #slv-edit-div[hidden]{ display:none; }
+#slv-tabs, #slv-band{ max-height:0; overflow:hidden; opacity:0;
+  transition:max-height .2s ease, opacity .14s ease, padding .2s ease; }
+body.slv-editmode #slv-tabs{ max-height:44px; opacity:1; }
+body.slv-editmode #slv-band{ max-height:72px; opacity:1; }
+
+/* tab strip: mode switch · tabs · Save */
+#slv-tabs{ display:flex; align-items:center; gap:10px; padding:0 12px; border-top:1px solid transparent; }
+body.slv-editmode #slv-tabs{ padding:5px 12px; border-top-color:var(--slv-line); }
+.slv-tablist{ display:flex; align-items:center; gap:2px; }
+.slv-tab{ all:unset; cursor:pointer; height:28px; padding:0 13px; border-radius:7px; position:relative;
+  font-size:12.5px; font-weight:550; color:var(--slv-dim); transition:color .12s, background .12s; }
+.slv-tab:hover{ color:var(--slv-ink); background:var(--slv-soft); }
+.slv-tab[aria-selected="true"]{ color:var(--slv-ink); }
+.slv-tab[aria-selected="true"]::after{ content:""; position:absolute; left:11px; right:11px; bottom:-5px;
+  height:2px; border-radius:2px; background:linear-gradient(90deg,var(--slv-accent),#6FA8DC); }
+
+/* mode switch (Slides | Theme) */
+.slv-modeswitch{ display:flex; background:var(--slv-soft); border:1px solid var(--slv-line); border-radius:9px; padding:2px; gap:2px; }
+.slv-mode{ height:28px; padding:0 12px; font-size:12px; font-weight:550; gap:6px; border-radius:7px; }
+.slv-mode svg{ width:16px; height:16px; }
+.slv-mode[aria-pressed="true"]{ background:var(--slv-accent); color:#fff; }
+.slv-mode[aria-pressed="true"] svg{ color:#fff; }
+.slv-tabsep{ width:1px; height:20px; background:var(--slv-line); margin:0 2px; }
+
+/* command band: each group has a small caption ON TOP (light, not bold), buttons below */
+#slv-band{ display:flex; align-items:stretch; padding:0 12px; background:var(--slv-soft); }
+body.slv-editmode #slv-band{ padding:6px 12px 8px; border-top:1px solid var(--slv-line); }
+.slv-bandtab{ display:none; align-items:stretch; }
+.slv-bandtab.slv-active{ display:flex; }
+#slv-band .slv-gcol{ display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:0 12px; }
+#slv-band .slv-glabel{ font-size:9.5px; font-weight:500; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--slv-dim); line-height:1; opacity:.8; padding-left:9px; }
+#slv-band .slv-grp{ display:flex; align-items:center; gap:4px; }
+#slv-band .slv-div{ width:1px; align-self:stretch; margin:3px 2px; background:var(--slv-line); opacity:.55; }
+
+/* theme mode: hide the slide tabs + band, keep the mode switch + Save */
+body.sl-studio-on .slv-tablist, body.sl-studio-on .slv-tabsep{ display:none; }
+body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px; border-top-color:transparent; }
+
+.slv-save{ background:var(--slv-accent); color:#fff; font-weight:600; padding:0 16px; }
+.slv-save:hover{ filter:brightness(1.08); }
+/* Pro sign-in control: CTA when locked, subtle "signed-in" badge (accent dot) when unlocked. */
+#slv-account{ padding:0 12px; font-weight:600; }
+#slv-account.slv-cta{ background:var(--slv-accent); color:#fff; }
+#slv-account.slv-cta:hover{ filter:brightness(1.08); }
+#slv-account.slv-signed{ color:var(--slv-accent); }
+#slv-account.slv-signed::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--slv-accent); display:inline-block; margin-right:2px; }
+
+/* ---- responsive: collapse secondary controls into a burger on small screens -------- */
+#slv-burger{ display:none; }
+#slv-more-menu{
+  position:fixed; z-index:2147483647; min-width:220px; max-width:calc(100vw - 16px); display:none;
+  background:var(--slv-bg-solid); border:1px solid var(--slv-line); border-radius:12px;
+  box-shadow:0 18px 50px -16px rgba(0,0,0,.45); padding:6px;
+}
+#slv-more-menu.slv-open{ display:block; }
+#slv-more-menu .slv-item{ all:unset; box-sizing:border-box; display:flex; align-items:center; gap:11px; width:100%;
+  padding:11px 12px; border-radius:8px; font-size:14px; color:var(--slv-ink); cursor:pointer; }
+#slv-more-menu .slv-item:hover{ background:var(--slv-hover); }
+#slv-more-menu .slv-item:active{ background:var(--slv-active); }
+#slv-more-menu .slv-item svg{ width:18px; height:18px; color:var(--slv-dim); flex:none; }
+#slv-more-menu .slv-item[aria-pressed="true"]{ color:var(--slv-accent); }
+#slv-more-menu .slv-item[aria-pressed="true"] svg{ color:var(--slv-accent); }
+#slv-more-menu .slv-mi-check{ margin-left:auto; color:var(--slv-accent); opacity:0; font-size:13px; }
+#slv-more-menu .slv-item[aria-pressed="true"] .slv-mi-check{ opacity:1; }
+#slv-more-menu .slv-menu-div{ height:1px; margin:5px 8px; background:var(--slv-line); }
+
+@media (max-width: 720px){
+  #slv-burger{ display:inline-flex; }
+  #slv-row .slv-collapsible{ display:none !important; }
+  #slv-row{ gap:2px; padding:7px 8px; }
+  #slv-present{ padding:0 9px; }
+  #slv-present .slv-present-label{ display:none; }          /* present → icon only */
+  /* edit ribbon: scroll its tab strip + command band sideways instead of overflowing */
+  #slv-tabs, #slv-band{ overflow-x:auto; overflow-y:hidden; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  #slv-tabs::-webkit-scrollbar, #slv-band::-webkit-scrollbar{ display:none; }
+  /* roomier touch targets on the bar buttons */
+  .slv-btn{ min-height:36px; }
+}
+</style>
+
+<div id="slv-handle" title="Show toolbar" aria-hidden="true">
+  <svg viewBox="0 0 24 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 12 8 18 4"/></svg>
+</div>
+
+<div id="slv-bar" role="toolbar" aria-label="Slaide toolbar">
+  <div id="slv-row">
+    <!-- Brand -->
+    <div class="slv-brand" title="Slaide">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" fill="none" aria-label="Slaide">
+        <defs><linearGradient id="slvBrandGrad" x1="4" y1="5" x2="44" y2="43" gradientUnits="userSpaceOnUse"><stop stop-color="#243B6B"/><stop offset=".52" stop-color="#3E6FB0"/><stop offset="1" stop-color="#6FA8DC"/></linearGradient></defs>
+        <rect x="4" y="5" width="40" height="38" rx="11" fill="url(#slvBrandGrad)"/>
+        <rect x="11" y="12.5" width="19" height="14.5" rx="2.6" fill="#fff" opacity=".42"/>
+        <rect x="16.5" y="19.5" width="19" height="16.5" rx="2.8" fill="#fff"/>
+        <rect x="20" y="24" width="11.5" height="2.9" rx="1.45" fill="#3E6FB0"/>
+        <rect x="20" y="29.2" width="7.5" height="2.5" rx="1.25" fill="#6FA8DC" opacity=".6"/>
+      </svg>
+    </div>
+    <!-- Burger (small screens only): opens the overflow menu of collapsed controls -->
+    <button class="slv-btn slv-icon" id="slv-burger" aria-haspopup="true" aria-expanded="false" aria-label="Menu" title="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div class="slv-div"></div>
+    <!-- File menu (Open / Save / Reload / Export) -->
+    <div class="slv-grp" style="position:relative">
+      <button class="slv-btn" id="slv-file" aria-haspopup="true" aria-expanded="false" title="File menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        File
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-left:-2px"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    </div>
+    <div class="slv-div"></div>
+    <!-- Navigate -->
+    <div class="slv-grp">
+      <button class="slv-btn slv-icon" id="slv-prev" title="Previous slide (←)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span class="slv-count"><input id="slv-cur" value="1" inputmode="numeric" aria-label="Current slide number"><span id="slv-total">/ 1</span></span>
+      <button class="slv-btn slv-icon" id="slv-next" title="Next slide (→)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+    <!-- Edit (revealed only when the engine reports editing is available) -->
+    <div class="slv-div slv-collapsible" id="slv-edit-div" hidden></div>
+    <div class="slv-grp slv-collapsible" id="slv-edit-grp" hidden>
+      <button class="slv-btn" id="slv-edit" aria-pressed="false" title="Edit text on the slide">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        Edit
+      </button>
+    </div>
+    <div class="slv-div slv-collapsible"></div>
+    <!-- View -->
+    <div class="slv-grp slv-collapsible">
+      <button class="slv-btn slv-icon" id="slv-thumbs-btn" aria-pressed="false" title="Slide navigator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
+      </button>
+      <button class="slv-btn slv-icon" id="slv-notes-btn" title="Speaker notes (N)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>
+      </button>
+      <div id="slv-zoom">
+        <button class="slv-btn slv-icon" id="slv-zout" title="Zoom out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <span id="slv-zlevel">100%</span>
+        <button class="slv-btn slv-icon" id="slv-zin" title="Zoom in">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="slv-btn slv-icon" id="slv-zfit" title="Fit to window">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="slv-sp"></div>
+    <!-- Present (toggles to Stop while presenting) / Pin -->
+    <div class="slv-grp">
+      <button class="slv-btn" id="slv-present" title="Present (fullscreen)">
+        <svg class="slv-ic-play" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 7 5.5z"/></svg>
+        <svg class="slv-ic-stop" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="display:none"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+        <span class="slv-present-label">Present</span>
+      </button>
+      <button class="slv-btn slv-icon slv-collapsible" id="slv-present-caret" title="Present on a specific display" aria-haspopup="true" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <button class="slv-btn slv-icon slv-collapsible" id="slv-pin" aria-pressed="false" title="Keep toolbar open">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M9 3h6l-1 7 3 3v1H7v-1l3-3z"/></svg>
+      </button>
+    </div>
+    <div class="slv-div slv-collapsible"></div>
+    <!-- Pro sign-in: state injected by the engine as window.__SLV_LICENSE__ ({state,tier,email}).
+         Signed out → "Sign in" (starts the Keycloak browser flow); signed in → tier badge that
+         signs out on click. Hidden in the hosted web editor (auth is the page's job there). -->
+    <div class="slv-grp slv-collapsible" id="slv-account-grp" hidden>
+      <button class="slv-btn" id="slv-account" title="Sign in to unlock Pro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        <span id="slv-account-label">Sign in</span>
+      </button>
+    </div>
+  </div>
+  <!-- Tab strip: editor mode switch · ribbon tabs · Save -->
+  <div id="slv-tabs">
+    <div class="slv-modeswitch" role="group" aria-label="Editor mode">
+      <button class="slv-btn slv-mode" id="slv-mode-slide" aria-pressed="true" title="Edit the slides — text, boxes, images">
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"/></svg>
+        Slides
+      </button>
+      <button class="slv-btn slv-mode" id="slv-mode-master" aria-pressed="false" title="Edit the theme — colours, fonts, type, layouts (the master)">
+        <svg viewBox="0 0 256 256" fill="currentColor"><path d="M200.77,53.89A103.27,103.27,0,0,0,128,24h-1.07A104,104,0,0,0,24,128c0,43,26.58,79.06,69.36,94.17A32,32,0,0,0,136,192a16,16,0,0,1,16-16h46.21a31.81,31.81,0,0,0,31.2-25.66,104.42,104.42,0,0,0,2.59-22.83A103.28,103.28,0,0,0,200.77,53.89ZM84,168a12,12,0,1,1,12-12A12,12,0,0,1,84,168ZM76,116a12,12,0,1,1,12-12A12,12,0,0,1,76,116Zm52-24a12,12,0,1,1,12-12A12,12,0,0,1,128,92Zm52,24a12,12,0,1,1,12-12A12,12,0,0,1,180,116Z"/></svg>
+        Theme
+      </button>
+    </div>
+    <div class="slv-tabsep"></div>
+    <div class="slv-tablist" role="tablist" aria-label="Ribbon tabs">
+      <button class="slv-tab" data-tab="home" role="tab" aria-selected="true">Home</button>
+      <button class="slv-tab" data-tab="insert" role="tab" aria-selected="false">Insert</button>
+      <button class="slv-tab" data-tab="arrange" role="tab" aria-selected="false">Arrange</button>
+    </div>
+    <div class="slv-sp"></div>
+    <button class="slv-btn slv-save" id="slv-save" title="Save edits to the source file">Save</button>
+  </div>
+  <!-- Command band: only the active tab's groups show. Icons: Phosphor (MIT), vendored inline. -->
+  <div id="slv-band">
+    <!-- Home: History + Element -->
+    <div class="slv-bandtab slv-active" data-tab="home">
+      <div class="slv-gcol">
+        <span class="slv-glabel">History</span>
+        <div class="slv-grp" aria-label="History">
+          <button class="slv-btn slv-icon" data-act="undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-act="redo" title="Redo (Ctrl+Y)"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg></button>
+        </div>
+      </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol">
+        <span class="slv-glabel">Element</span>
+        <div class="slv-grp" aria-label="Element">
+          <button class="slv-btn slv-icon" data-act="duplicate" title="Duplicate"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-act="delete" title="Delete (Del)"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <!-- Insert: Text + Shapes + Media -->
+    <div class="slv-bandtab" data-tab="insert" id="slv-insert-grp" aria-label="Insert element">
+      <div class="slv-gcol">
+        <span class="slv-glabel">Text</span>
+        <div class="slv-grp">
+          <button class="slv-btn slv-icon" data-ins="text" title="Text box"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,56V88a8,8,0,0,1-16,0V64H136V192h24a8,8,0,0,1,0,16H96a8,8,0,0,1,0-16h24V64H64V88a8,8,0,0,1-16,0V56a8,8,0,0,1,8-8H200A8,8,0,0,1,208,56Z"/></svg></button>
+        </div>
+      </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol">
+        <span class="slv-glabel">Shapes</span>
+        <div class="slv-grp">
+          <button class="slv-btn slv-icon" data-ins="rect" title="Box"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V48H208V208Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-ins="ellipse" title="Ellipse"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-ins="line" title="Line"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M214.64,41.36a32,32,0,0,0-50.2,38.89L80.25,164.44a32.06,32.06,0,0,0-38.89,4.94h0a32,32,0,1,0,50.2,6.37l84.19-84.19a32,32,0,0,0,38.89-50.2Zm-139.33,162a16,16,0,0,1-22.64-22.64h0a16,16,0,0,1,22.63,0h0A16,16,0,0,1,75.31,203.33Zm128-128a16,16,0,1,1,0-22.63A16,16,0,0,1,203.33,75.3Z"/></svg></button>
+        </div>
+      </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol">
+        <span class="slv-glabel">Media</span>
+        <div class="slv-grp">
+          <button class="slv-btn slv-icon" data-ins="image" title="Insert image(s) — pick one or more files"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-ins="library" id="slv-ins-library" style="display:none" title="Image library — upload, add a folder, or pick a saved image"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,64H154.67L126.93,43.2a16.12,16.12,0,0,0-9.6-3.2H72A16,16,0,0,0,56,56V72H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H203.74A16.27,16.27,0,0,0,220,202.05L246.4,87a16,16,0,0,0-12.8-19.16A16.43,16.43,0,0,0,224,64ZM72,56h45.33l21.34,16H72ZM203.74,200H40V88H224Z"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <!-- Arrange: Align + Order -->
+    <div class="slv-bandtab" data-tab="arrange">
+      <div class="slv-gcol">
+        <span class="slv-glabel">Align</span>
+        <div class="slv-grp" aria-label="Align">
+          <button class="slv-btn slv-icon" data-act="centerH" title="Center horizontally"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,80H136V48a8,8,0,0,0-16,0V80H48A16,16,0,0,0,32,96v64a16,16,0,0,0,16,16h72v32a8,8,0,0,0,16,0V176h72a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80Zm0,80H48V96H208v64Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-act="centerV" title="Center vertically"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M208,120H176V48a16,16,0,0,0-16-16H96A16,16,0,0,0,80,48v72H48a8,8,0,0,0,0,16H80v72a16,16,0,0,0,16,16h64a16,16,0,0,0,16-16V136h32a8,8,0,0,0,0-16Zm-48,88H96V48h64Z"/></svg></button>
+        </div>
+      </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol">
+        <span class="slv-glabel">Order</span>
+        <div class="slv-grp" aria-label="Order">
+          <button class="slv-btn slv-icon" data-act="front" title="Bring to front"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,138.34a8,8,0,0,1-11.32,11.32L136,91.31V224a8,8,0,0,1-16,0V91.31L61.66,149.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0ZM216,32H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-act="back" title="Send to back"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M50.34,117.66a8,8,0,0,1,11.32-11.32L120,164.69V32a8,8,0,0,1,16,0V164.69l58.34-58.35a8,8,0,0,1,11.32,11.32l-72,72a8,8,0,0,1-11.32,0ZM216,208H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="slv-file-menu" role="menu" aria-label="File menu">
+  <button class="slv-item" data-cmd="open" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    Open…
+  </button>
+  <button class="slv-item" id="slv-mi-save" data-cmd="save" role="menuitem" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Save
+  </button>
+  <button class="slv-item" data-cmd="reload" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
+    Reload from source
+  </button>
+  <div class="slv-menu-div"></div>
+  <button class="slv-item" data-exp="export-html" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    Export HTML…
+  </button>
+  <button class="slv-item" data-exp="export-pdf" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Export PDF…
+  </button>
+  <button class="slv-item" data-exp="export-pptx" role="menuitem" title="Editable PowerPoint with transitions and builds">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="1.6"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+    Export PowerPoint…
+  </button>
+  <button class="slv-item" data-exp="export-key" role="menuitem" title="Native Keynote (.key)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="1.6"/><polyline points="8 14 11 10 14 13 17 8"/></svg>
+    Export Keynote…
+  </button>
+  <button class="slv-item" data-exp="export-slaidec" role="menuitem" title="Bundle deck + theme + assets into one shareable file">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    Export .slaidec…
+  </button>
+  <div class="slv-menu-div"></div>
+  <button class="slv-item" id="slv-mi-theme" data-cmd="theme" role="menuitem" title="Switch the viewer chrome between light and dark">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <span id="slv-mi-theme-label">Dark theme</span>
+  </button>
+</div>
+
+<!-- Overflow menu (small screens): built from the collapsed toolbar controls by the ribbon script -->
+<div id="slv-more-menu" role="menu" aria-label="More controls"></div>
+
+<aside id="slv-thumbs" aria-label="Slide navigator">
+  <div id="slv-thumbs-head">Slides</div>
+  <div id="slv-thumbs-list"></div>
+</aside>
+
+<script>
+(function(){
+  function ipcSend(m){ try{ window.ipc.postMessage(m); }catch(e){} }
+  function S(){ return window.slaide || null; }          // post-rename public API
+  function q(s){ return document.querySelector(s); }
+  var body = document.body, bar = q('#slv-bar');
+
+  // ---- host adapter --------------------------------------------------------
+  // Every side-effecting action (persist prefs, present, open/reload, insert image, save
+  // edits, export) is routed through window.__SLV_HOST__ so one ribbon drives two backends:
+  // the native desktop viewer (Rust over window.ipc — the DEFAULT) and the hosted web editor
+  // (the engine-service over fetch, selected only when window.__SLV_WEB__ is present). The
+  // desktop adapter emits the EXACT ipc messages used before this seam existed, so when
+  // __SLV_WEB__ is absent the viewer behaves byte-for-byte as it always has.
+  var WEB  = window.__SLV_WEB__  || null;   // { apiBase, sessionId, internal?, token?, secret? }
+  var CAPS = window.__SLV_CAPS__ || null;   // injected by the engine render (edit/persist/import/export/aiAgent)
+  // Editable when the native viewer says so (desktop) OR the web caps grant `edit`. Desktop
+  // parity: with __SLV_WEB__ absent this is exactly !!window.__SLV_EDITABLE__.
+  var EDITABLE = !!window.__SLV_EDITABLE__ || !!(WEB && CAPS && CAPS.edit);
+
+  function dl(blob, name){
+    try{
+      var u = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = u; a.download = name || 'download'; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); }, 0);
+    }catch(e){}
+  }
+
+  function makeDesktopHost(){
+    // Identity layer over the original window.ipc messages — desktop parity.
+    return {
+      web: false,
+      loadPrefs:    function(){ return window.__SLV_PREFS__ || {}; },
+      savePrefs:    function(p){ ipcSend('prefs:' + JSON.stringify(p)); },
+      present:      function(){ ipcSend('present'); },
+      open:         function(){ ipcSend('open'); },
+      reload:       function(){ ipcSend('reload'); },
+      requestImage: function(){ ipcSend('insert-image'); },
+      saveEdits:    function(edits){ ipcSend('save:' + JSON.stringify(edits)); },
+      exportAs:     function(kind){ ipcSend(kind); }
+    };
+  }
+
+  function makeWebHost(cfg){
+    // Drives the same-origin engine-service proxy. apiBase is the `/v1` base; the editable
+    // render, __SLV_WEB__ and __SLV_CAPS__ are all served same-origin so fetch carries the
+    // session cookie and the document is never a cross-origin iframe.
+    var base = String(cfg.apiBase || '').replace(/\/+$/, '');
+    var sid  = cfg.sessionId;
+    function url(p){ return base + '/sessions/' + encodeURIComponent(sid) + p; }
+    function hdr(extra){
+      var h = extra || {};
+      if(cfg.internal && cfg.secret) h['X-Slaide-Internal'] = cfg.secret;
+      if(cfg.token) h['Authorization'] = 'Bearer ' + cfg.token;
+      return h;
+    }
+    function fail(e){ try{ console.error('[slaide:web]', e); }catch(_){} }
+
+    // Present: the Fullscreen API on this document; mirror the button via fullscreenchange.
+    function present(){
+      try{
+        if(document.fullscreenElement){ if(document.exitFullscreen) document.exitFullscreen(); }
+        else { var el = document.documentElement; if(el.requestFullscreen) el.requestFullscreen(); }
+      }catch(e){ fail(e); }
+    }
+    document.addEventListener('fullscreenchange', function(){
+      if(window.__slvSetPresenting) window.__slvSetPresenting(!!document.fullscreenElement);
+    });
+
+    // Upload one image to the session asset store and drop it on the current slide.
+    function uploadInsert(f){
+      return fetch(url('/assets'), { method:'POST', credentials:'same-origin',
+          headers: hdr({ 'X-Slaide-Filename': f.name, 'content-type': f.type || 'application/octet-stream' }),
+          body: f })
+        .then(function(r){ if(!r.ok) throw new Error('asset upload failed: ' + r.status); return r.json(); })
+        .then(function(j){ var s = S(); if(s && s.__editor && j && j.rel) s.__editor.insertImage(j.rel); });
+    }
+    // Upload + insert a list of files one after another (so the editor cascades them, not overlap).
+    function uploadInsertEach(files){
+      var list = Array.prototype.slice.call(files || []), i = 0;
+      (function next(){
+        if(i >= list.length) return;
+        uploadInsert(list[i++]).then(next, function(e){ fail(e); next(); });
+      })();
+    }
+    function requestImage(){
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.style.display = 'none';
+      document.body.appendChild(inp);
+      inp.addEventListener('change', function(){ var fs = inp.files; inp.remove(); uploadInsertEach(fs); });
+      inp.click();
+    }
+
+    // Live WYSIWYG re-render for structural edits (layout/background/variant): the engine re-maps
+    // slots/backgrounds, which the client can't preview alone. Patch the session (no disk save) with
+    // ALL pending edits, then reload the render — preserving the current slide via the hash.
+    window.__slvLiveRerender = function(edits){
+      try{ var i = (window.slaide && window.slaide.index); if(i != null) location.hash = '#' + (i + 1); }catch(e){}
+      if(!edits || !edits.length){ location.reload(); return; }
+      fetch(url('/patch'), { method:'POST', credentials:'same-origin',
+        headers: hdr({ 'content-type':'application/json' }), body: JSON.stringify({ patches: edits }) })
+        .then(function(r){ if(!r.ok) throw new Error('patch failed: ' + r.status); location.reload(); })
+        .catch(fail);
+    };
+
+    function saveEdits(edits){
+      if(!edits || !edits.length) return;
+      var persist = !!(CAPS && CAPS.persist);
+      fetch(url('/patch'), { method:'POST', credentials:'same-origin',
+        headers: hdr({ 'content-type':'application/json' }),
+        body: JSON.stringify({ patches: edits }) })
+        .then(function(r){ if(!r.ok) throw new Error('patch failed: ' + r.status);
+          return persist ? fetch(url('/save'), { method:'POST', credentials:'same-origin', headers: hdr() }) : null; })
+        .then(function(r){
+          if(r){ if(!r.ok) throw new Error('save failed: ' + r.status); return r.blob().then(function(b){ dl(b, 'deck.slaidec'); }); }
+        })
+        .then(function(){ var s = S(); if(s && s.clearEdits) s.clearEdits(); })
+        .catch(fail);
+    }
+
+    function exportAs(kind){
+      // kind is the ribbon's data-exp value: export-html | export-pdf | export-pptx | export-key | export-slaidec.
+      if(kind === 'export-html'){
+        fetch(url('/render'), { credentials:'same-origin', headers: hdr() })
+          .then(function(r){ if(!r.ok) throw new Error('render failed: ' + r.status); return r.blob(); })
+          .then(function(b){ dl(b, 'deck.html'); }).catch(fail);
+        return;
+      }
+      var k = kind === 'export-pdf' ? 'pdf' : kind === 'export-slaidec' ? 'slaidec'
+        : kind === 'export-pptx' ? 'pptx' : kind === 'export-key' ? 'key' : null;
+      if(!k) return;
+      fetch(url('/export/' + k), { method:'POST', credentials:'same-origin',
+        headers: hdr({ 'content-type':'application/json' }), body:'{}' })
+        .then(function(r){ if(!r.ok) throw new Error('export failed: ' + r.status); return r.blob(); })
+        .then(function(b){ dl(b, 'deck.' + k); }).catch(fail);
+    }
+
+    return {
+      web: true,
+      loadPrefs:    function(){ try{ return JSON.parse(localStorage.getItem('slv:prefs') || '{}') || {}; }catch(e){ return {}; } },
+      savePrefs:    function(p){ try{ localStorage.setItem('slv:prefs', JSON.stringify(p)); }catch(e){} },
+      present:      present,
+      open:         function(){ location.reload(); },     // re-fetch the editable render
+      reload:       function(){ location.reload(); },
+      requestImage: requestImage,
+      saveEdits:    saveEdits,
+      exportAs:     exportAs
+    };
+  }
+
+  var HOST = window.__SLV_HOST__ = (WEB ? makeWebHost(WEB) : makeDesktopHost());
+  // Native: relay this window's slide moves to Rust, which mirrors them onto the audience window
+  // (the second screen) when presenting on another display. Web uses BroadcastChannel instead.
+  if(!WEB){
+    window.__slvNav = function(c, s){ ipcSend('nav:' + c + '.' + s); };
+    window.__slvBlank = function(k){ ipcSend('blank:' + (k || '')); };   // b/w blanks the audience (projector)
+  }
+
+  // Capability gating (web only — desktop is left exactly as before). The engine render
+  // injects window.__SLV_CAPS__; hide affordances the granted tier doesn't include.
+  function applyCaps(){
+    if(!WEB) return;
+    var c = CAPS || {};
+    if(!c.persist){ var sv = q('#slv-save'); if(sv) sv.style.display = 'none'; var ms = q('#slv-mi-save'); if(ms) ms.hidden = true; }
+    if(!c.import){ var ii = q('#slv-insert-grp [data-ins="image"]'); if(ii) ii.style.display = 'none'; }
+    if(c.persist){ var lb = q('#slv-ins-library'); if(lb) lb.style.display = ''; }   // cloud library (logged-in hosted only)
+    if(!c.export){ Array.prototype.forEach.call(document.querySelectorAll('#slv-file-menu [data-exp]'), function(e){ e.hidden = true; }); }
+    if(!c.aiAgent){ var ai = q('#slv-ai-grp'); if(ai) ai.hidden = true; }   // AI panel (when present)
+  }
+
+  // PowerPoint / Keynote export. Desktop runs them through Node + slaide; the web host
+  // through the engine-service. Native Keynote needs macOS, so it is grayed out elsewhere
+  // (web reports it via CAPS.keynote, desktop via the injected __SLV_MAC__ flag).
+  function applyExportTargets(){
+    var key = q('#slv-file-menu [data-exp="export-key"]');
+    var isMac = WEB ? !!(CAPS && CAPS.keynote) : !!window.__SLV_MAC__;
+    if(key && !isMac){
+      key.classList.add('slv-off');
+      key.setAttribute('aria-disabled', 'true');
+      key.setAttribute('title', 'Keynote export needs macOS');
+    }
+  }
+
+  // ---- reveal / hide / pin ------------------------------------------------
+  var pinned = false, hideTimer = null, exportOpen = false;
+  var thumbsBuilt = false, thumbsDirty = false;
+
+  // ---- persisted chrome prefs (docked toolbar + slides panel) -------------
+  // Loaded/persisted through the host adapter: native viewer → window.__SLV_PREFS__ + IPC;
+  // web editor → localStorage. Both default ON when absent (plain web build / first run).
+  var PREFS = HOST.loadPrefs();
+  // ---- chrome theme ------------------------------------------------------
+  // Native: saved pref (light default, dark toggle). Hosted: follow the WEBSITE's appearance,
+  // injected as window.__SLV_WEB__.theme — the site owns it, so we don't offer a divergent toggle.
+  var docEl = document.documentElement;
+  var HOSTED_THEME = WEB ? ((WEB.theme === 'dark') ? 'dark' : 'light') : null;
+  function curTheme(){ return docEl.getAttribute('data-slv-theme') === 'dark' ? 'dark' : 'light'; }
+  function applyTheme(t){
+    if(t === 'dark') docEl.setAttribute('data-slv-theme', 'dark');
+    else docEl.removeAttribute('data-slv-theme');
+    var lbl = q('#slv-mi-theme-label');                 // the menu item offers the OTHER mode
+    if(lbl) lbl.textContent = (t === 'dark') ? 'Light theme' : 'Dark theme';
+  }
+  applyTheme(HOSTED_THEME || (PREFS.theme === 'dark' ? 'dark' : 'light'));
+  if(WEB){ var _themeItem = q('#slv-mi-theme'); if(_themeItem) _themeItem.hidden = true; }   // hosted: website owns appearance
+  function savePrefs(){
+    HOST.savePrefs({
+      toolbar_pinned: pinned,
+      slides_visible: q('#slv-thumbs').classList.contains('slv-open'),
+      theme: curTheme()
+    });
+  }
+  function toggleTheme(){ if(WEB) return; applyTheme(curTheme() === 'dark' ? 'light' : 'dark'); savePrefs(); }
+  // NOTE: edit mode does NOT force the bar open — the PIN does. So you can run the editor with
+  // the toolbar pinned (docked) or as a top slideout, your choice.
+  function lockedOpen(){
+    var moreOpen = (function(){ var mm = q('#slv-more-menu'); return mm && mm.classList.contains('slv-open'); })();
+    return pinned || exportOpen || moreOpen || (bar && bar.contains(document.activeElement));
+  }
+  function show(){ clearTimeout(hideTimer); body.classList.add('slv-shown'); }
+  function reallyHide(){ if(!lockedOpen()) body.classList.remove('slv-shown'); }
+  function scheduleHide(){ clearTimeout(hideTimer); hideTimer = setTimeout(reallyHide, 480); }
+  // Publish the toolbar's live height so a docked side panel (the editor inspector) clears it
+  // instead of hiding behind a taller editing bar.
+  function syncBarH(){ if(bar) document.documentElement.style.setProperty('--slv-bar-h', bar.offsetHeight + 'px'); }
+  window.addEventListener('resize', syncBarH);
+  (function(){ var er = q('#slv-editrow'); if(er) er.addEventListener('transitionend', syncBarH); })();
+  setTimeout(syncBarH, 0);
+  if(bar){
+    bar.addEventListener('pointerenter', show);
+    bar.addEventListener('pointerleave', scheduleHide);
+    bar.addEventListener('focusin', show);
+    bar.addEventListener('focusout', scheduleHide);
+  }
+  window.addEventListener('mousemove', function(e){ if(e.clientY <= 16) show(); });
+  var handle = q('#slv-handle');
+  handle.addEventListener('click', show);
+  handle.addEventListener('pointerenter', show);
+
+  var pinBtn = q('#slv-pin');
+  function setPinned(p){ pinned = p; body.classList.toggle('slv-pinned', p); pinBtn.setAttribute('aria-pressed', p?'true':'false'); if(p) show(); else scheduleHide(); }
+  pinBtn.addEventListener('click', function(){ setPinned(!pinned); savePrefs(); });
+
+  // ---- file: Open / Save / Reload / Export now live in the File menu (below) --
+  var saveHandler = null;   // the editable block wires this to the save routine
+
+  // ---- navigate -----------------------------------------------------------
+  q('#slv-prev').addEventListener('click', function(){ var s = S(); if(s) s.prev(); });
+  q('#slv-next').addEventListener('click', function(){ var s = S(); if(s) s.next(); });
+  var curIn = q('#slv-cur'), totalEl = q('#slv-total');
+  curIn.addEventListener('focus', function(){ curIn.select(); });
+  curIn.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ var n = parseInt(curIn.value, 10); var s = S(); if(s && n >= 1) s.goTo(n-1); curIn.blur(); e.preventDefault(); }
+    else if(e.key === 'Escape'){ syncNav(); curIn.blur(); }
+    e.stopPropagation();   // keep digits/arrows/space out of the deck's keydown nav
+  });
+  function syncNav(idx, count){
+    var s = S();
+    if(idx == null) idx = s ? s.index : 0;
+    if(count == null) count = s ? s.count : 1;
+    curIn.value = (idx + 1); totalEl.textContent = '/ ' + count;
+    highlightThumb(idx);
+  }
+  document.addEventListener('slaide:change', function(ev){ var d = (ev && ev.detail) || {}; syncNav(d.index, d.count); });
+
+  // ---- view: notes + zoom -------------------------------------------------
+  q('#slv-notes-btn').addEventListener('click', function(){ var s = S(); if(s && s.toggleNotes) s.toggleNotes(); });
+  var zlevel = q('#slv-zlevel');
+  function syncZoom(){ var s = S(); var z = (s && s.zoomLevel) || 1; zlevel.textContent = Math.round(z * 100) + '%'; }
+  q('#slv-zout').addEventListener('click', function(){ var s = S(); if(s) s.zoomBy(1/1.15); syncZoom(); });
+  q('#slv-zin').addEventListener('click',  function(){ var s = S(); if(s) s.zoomBy(1.15);  syncZoom(); });
+  q('#slv-zfit').addEventListener('click', function(){ var s = S(); if(s) s.zoom('fit');    syncZoom(); });
+
+  // ---- present / stop -----------------------------------------------------
+  // Set by the editable block (below) so presenting can drop + restore edit mode across scopes.
+  var _editApi = null, _wasEditing = false;
+  var presentBtn = q('#slv-present'), presentCaret = q('#slv-present-caret');
+  // Rust calls this after toggling fullscreen, so the button + state stay in sync even if
+  // presentation is exited via Esc or the window controls. Presenting hides ALL chrome
+  // (body.slv-presenting) and drops edit mode so the deck owns the screen; stop restores it.
+  window.__slvSetPresenting = function(on){
+    on = !!on;
+    document.body.classList.toggle('slv-presenting', on);
+    if(on){ if(_editApi && _editApi.editing && _editApi.editing()){ _wasEditing = true; _editApi.setEdit(false); } }
+    else if(_wasEditing){ _wasEditing = false; if(_editApi) _editApi.setEdit(true); }
+    presentBtn.classList.toggle('slv-present-on', on);
+    presentBtn.title = on ? 'Stop presentation' : 'Present (fullscreen)';
+    presentBtn.querySelector('.slv-present-label').textContent = on ? 'Stop' : 'Present';
+    presentBtn.querySelector('.slv-ic-play').style.display = on ? 'none' : '';
+    presentBtn.querySelector('.slv-ic-stop').style.display = on ? '' : 'none';
+  };
+  presentBtn.addEventListener('click', function(){ HOST.present(); });
+  // Second-screen presenting (native): the audience is a SEPARATE window, so the main window keeps
+  // its chrome — just reflect Present⇄Stop on the button (Rust calls this when the audience opens/closes).
+  window.__slvAudienceOn = function(on){
+    on = !!on;
+    presentBtn.classList.toggle('slv-present-on', on);
+    presentBtn.querySelector('.slv-present-label').textContent = on ? 'Stop' : 'Present';
+    presentBtn.querySelector('.slv-ic-play').style.display = on ? 'none' : '';
+    presentBtn.querySelector('.slv-ic-stop').style.display = on ? '' : 'none';
+  };
+  // Let the deck runtime's keyboard shortcuts (F5 / Shift+F5 / Esc) drive presentation through the
+  // host: native → IPC OS-window fullscreen, web → the Fullscreen API. HOST.present() toggles, so
+  // we only fire it when the live state differs from what the runtime asked for.
+  window.__slvPresentHook = function(on){
+    if(!!on !== document.body.classList.contains('slv-presenting')) HOST.present();
+  };
+
+  // Present options: a "Presenter view" (a second window with current+next+notes — web, where
+  // window.open works) plus, on the desktop with >1 display, which screen to present on.
+  (function(){
+    if(!presentCaret) return;
+    var mons = (!WEB && window.__SLV_MONITORS__) || [];
+    var canPresenter = !!WEB;
+    if(!canPresenter && mons.length < 2) return;                 // nothing extra to offer
+    presentCaret.hidden = false;
+    presentCaret.title = 'Present options';
+    var menu = document.createElement('div'); menu.id = 'slv-mon-menu'; menu.setAttribute('role','menu'); document.body.appendChild(menu);
+    if(canPresenter){
+      var pv = document.createElement('button'); pv.className = 'slv-item'; pv.setAttribute('role','menuitem');
+      pv.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="13" height="10" rx="1.6"/><path d="M17 8h5v8a2 2 0 0 1-2 2h-9"/><line x1="8" y1="18" x2="8" y2="21"/></svg> Presenter view';
+      pv.addEventListener('click', function(){ menu.classList.remove('slv-open'); var s = S(); if(s && s.presenter) s.presenter(); });
+      menu.appendChild(pv);
+    }
+    if(mons.length >= 2){
+      if(canPresenter){ var dv = document.createElement('div'); dv.className = 'slv-menu-div'; menu.appendChild(dv); }
+      mons.forEach(function(name, i){
+        var it = document.createElement('button'); it.className = 'slv-item'; it.setAttribute('role','menuitem');
+        it.textContent = (i===0 ? '● ' : '○ ') + name;
+        it.addEventListener('click', function(){ menu.classList.remove('slv-open'); ipcSend('present:' + i); });
+        menu.appendChild(it);
+      });
+    }
+    function openMon(o){ menu.classList.toggle('slv-open', o); if(o){ var r = presentCaret.getBoundingClientRect();
+      menu.style.top = (r.bottom + 6) + 'px'; menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'; } }
+    presentCaret.addEventListener('click', function(e){ e.stopPropagation(); openMon(!menu.classList.contains('slv-open')); });
+    document.addEventListener('click', function(e){ if(!menu.contains(e.target) && e.target !== presentCaret) openMon(false); });
+  })();
+
+  // ---- file menu (Open / Save / Reload / Export) --------------------------
+  var menu = q('#slv-file-menu'), fileBtn = q('#slv-file');
+  function setMenu(o){
+    exportOpen = o; menu.classList.toggle('slv-open', o); fileBtn.setAttribute('aria-expanded', o ? 'true' : 'false');
+    if(o){
+      var r = fileBtn.getBoundingClientRect();
+      menu.style.top = (r.bottom + 6) + 'px';
+      menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+    } else { scheduleHide(); }
+  }
+  fileBtn.addEventListener('click', function(e){ e.stopPropagation(); setMenu(!exportOpen); });
+  Array.prototype.forEach.call(menu.querySelectorAll('.slv-item'), function(it){
+    it.addEventListener('click', function(){
+      if(it.classList.contains('slv-off')) return; // disabled (e.g. Keynote off macOS)
+      var cmd = it.getAttribute('data-cmd'), exp = it.getAttribute('data-exp');
+      if(exp){ HOST.exportAs(exp); }
+      else if(cmd === 'open'){ HOST.open(); }
+      else if(cmd === 'reload'){ HOST.reload(); }
+      else if(cmd === 'save' && saveHandler){ saveHandler(); }
+      else if(cmd === 'theme'){ toggleTheme(); }
+      setMenu(false);
+    });
+  });
+  document.addEventListener('click', function(e){
+    if(exportOpen && !menu.contains(e.target) && !fileBtn.contains(e.target)) setMenu(false);
+  });
+
+  // ---- responsive overflow ("burger") menu --------------------------------
+  // On small screens the secondary toolbar groups are CSS-hidden (.slv-collapsible) and surfaced
+  // here instead. Each item proxies to its real toolbar button, so behaviour lives in one place.
+  var burger = q('#slv-burger'), moreMenu = q('#slv-more-menu');
+  var MORE = [
+    { id:'slv-thumbs-btn',    label:'Slides' },
+    { id:'slv-notes-btn',     label:'Speaker notes' },
+    { id:'slv-zout',          label:'Zoom out' },
+    { id:'slv-zin',           label:'Zoom in' },
+    { id:'slv-zfit',          label:'Fit to window' },
+    { id:'slv-edit',          label:'Edit' },
+    { id:'slv-present-caret', label:'Present on a display…' },
+    { id:'slv-pin',           label:'Keep toolbar open' },
+    { id:'slv-account',       label:null }      // label read live from #slv-account-label
+  ];
+  function moreAvailable(btn){
+    if(!btn || btn.hasAttribute('hidden')) return false;
+    var grp = btn.closest('.slv-grp'); if(grp && grp.hasAttribute('hidden')) return false;
+    return true;
+  }
+  function moreItem(label, icon, pressed){
+    var b = document.createElement('button'); b.className = 'slv-item'; b.type = 'button'; b.setAttribute('role','menuitem');
+    if(icon) b.appendChild(icon);
+    var s = document.createElement('span'); s.textContent = label; b.appendChild(s);
+    if(pressed != null){ b.setAttribute('aria-pressed', pressed); var c = document.createElement('span'); c.className = 'slv-mi-check'; c.textContent = '✓'; b.appendChild(c); }
+    return b;
+  }
+  function buildMore(){
+    moreMenu.innerHTML = '';
+    MORE.forEach(function(m){
+      var btn = q('#' + m.id); if(!moreAvailable(btn)) return;
+      var svg = btn.querySelector('svg'); var icon = svg ? svg.cloneNode(true) : null;
+      var lbl = m.label || (q('#slv-account-label') ? q('#slv-account-label').textContent : (btn.title || btn.textContent.trim()));
+      var pressed = btn.hasAttribute('aria-pressed') ? btn.getAttribute('aria-pressed') : null;
+      var item = moreItem(lbl, icon, pressed);
+      item.addEventListener('click', function(){ openMore(false); btn.click(); });
+      moreMenu.appendChild(item);
+    });
+    if(!WEB){                                          // hosted: website owns appearance, no toggle
+      var dv = document.createElement('div'); dv.className = 'slv-menu-div'; moreMenu.appendChild(dv);
+      var th = moreItem(curTheme() === 'dark' ? 'Light theme' : 'Dark theme', null, null);
+      th.addEventListener('click', function(){ openMore(false); toggleTheme(); });
+      moreMenu.appendChild(th);
+    }
+  }
+  function openMore(o){
+    if(o){ buildMore(); setMenu(false); show(); }
+    moreMenu.classList.toggle('slv-open', o);
+    burger.setAttribute('aria-expanded', o ? 'true' : 'false');
+    if(o){ var r = burger.getBoundingClientRect();
+      moreMenu.style.top = (r.bottom + 6) + 'px';
+      moreMenu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - moreMenu.offsetWidth - 8)) + 'px';
+    } else { scheduleHide(); }
+  }
+  burger.addEventListener('click', function(e){ e.stopPropagation(); openMore(!moreMenu.classList.contains('slv-open')); });
+  document.addEventListener('click', function(e){
+    if(moreMenu.classList.contains('slv-open') && !moreMenu.contains(e.target) && !burger.contains(e.target)) openMore(false);
+  });
+
+  // ---- Pro sign-in --------------------------------------------------------
+  // Native viewer only (the hosted web editor authenticates via the page). State comes from
+  // window.__SLV_LICENSE__ injected by the engine. The Rust side runs the Keycloak flow and
+  // re-renders, so this just reflects state + fires auth:login / auth:logout over IPC.
+  (function(){
+    var grp = q('#slv-account-grp'), btn = q('#slv-account'), lbl = q('#slv-account-label');
+    if(!grp || !btn || WEB) return;            // hidden in the web editor
+    grp.hidden = false;
+    var lic = window.__SLV_LICENSE__ || { state:'none', tier:'none', email:null };
+    if(lic.state === 'none'){
+      lbl.textContent = 'Sign in';
+      btn.classList.add('slv-cta');
+      btn.title = 'Sign in to unlock Pro editing';
+      btn.onclick = function(){ ipcSend('auth:login'); };
+    } else {
+      var tier = (lic.tier && lic.tier !== 'none') ? lic.tier : (lic.state === 'trial' ? 'trial' : 'pro');
+      lbl.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);   // "Pro" / "Trial"
+      btn.classList.add('slv-signed');
+      btn.title = (lic.email ? 'Signed in as ' + lic.email : 'Signed in') + ' — click to sign out';
+      btn.onclick = function(){ ipcSend('auth:logout'); };
+    }
+  })();
+
+  // ---- thumbnail navigator ------------------------------------------------
+  function buildThumbs(){
+    var list = q('#slv-thumbs-list'), stage = q('.sl-stage'); if(!list || !stage) return;
+    list.innerHTML = '';
+    var CW = parseFloat(stage.dataset.w) || 1280, CH = parseFloat(stage.dataset.h) || 720;
+    // Thumb width must fit the panel: 196 drawer − 24 list padding − 8 scrollbar − ~34 (row
+    // padding/gap + slide number) ≈ 130. 126 leaves margin so the frame + number never clip.
+    var TW = 126, sc = TW / CW, TH = Math.round(TW * CH / CW);
+    var real = stage.querySelectorAll(':scope > .sl-slide');
+    Array.prototype.forEach.call(real, function(slide, i){
+      var item = document.createElement('button'); item.className = 'slv-thumb'; item.title = 'Slide ' + (i+1);
+      var frame = document.createElement('div'); frame.className = 'slv-thumb-frame'; frame.style.width = TW + 'px'; frame.style.height = TH + 'px';
+      var box = document.createElement('div'); box.className = 'slv-thumb-box'; box.style.width = CW + 'px'; box.style.height = CH + 'px'; box.style.transform = 'scale(' + sc + ')';
+      var c = slide.cloneNode(true);
+      c.classList.remove('sl-active');
+      c.style.visibility = 'visible'; c.style.opacity = '1';
+      c.querySelectorAll('.sl-build').forEach(function(e){ e.classList.add('sl-shown'); });           // final built state
+      c.querySelectorAll('[id]').forEach(function(e){ e.removeAttribute('id'); });                    // no duplicate ids
+      c.querySelectorAll('[data-morph]').forEach(function(e){ e.removeAttribute('data-morph'); });    // no view-transition clashes
+      box.appendChild(c); frame.appendChild(box);
+      var n = document.createElement('span'); n.className = 'slv-thumb-n'; n.textContent = (i+1);
+      item.appendChild(frame); item.appendChild(n);
+      item.addEventListener('click', function(){ var s = S(); if(s) s.show(i); });
+      list.appendChild(item);
+    });
+    thumbsBuilt = true; thumbsDirty = false;
+  }
+  function highlightThumb(idx){
+    var list = q('#slv-thumbs-list'); if(!list) return;
+    Array.prototype.forEach.call(list.children, function(el, i){ el.classList.toggle('slv-thumb-active', i === idx); });
+    if(q('#slv-thumbs').classList.contains('slv-open')){ var a = list.children[idx]; if(a && a.scrollIntoView) a.scrollIntoView({ block:'nearest' }); }
+  }
+  // Docking (not overlay): reserve a left gutter via --sl-dock-left and ask the deck
+  // to recompute its fit so the slide shrinks + recenters beside the panel.
+  var DOCK_W = 196;
+  function setDock(open){
+    document.documentElement.style.setProperty('--sl-dock-left', open ? (DOCK_W + 'px') : '0px');
+    var s = S(); if(s && s.relayout) s.relayout();
+  }
+  var thumbsBtn = q('#slv-thumbs-btn');
+  function setThumbs(open){
+    var d = q('#slv-thumbs');
+    if(open && (!thumbsBuilt || thumbsDirty)) buildThumbs();
+    d.classList.toggle('slv-open', open);
+    thumbsBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    setDock(open);
+    if(open){ var s = S(); highlightThumb(s ? s.index : 0); }
+  }
+  thumbsBtn.addEventListener('click', function(){
+    setThumbs(!q('#slv-thumbs').classList.contains('slv-open'));
+    savePrefs();
+  });
+  // keep the stage centered across the panel's slide-in/out animation
+  q('#slv-thumbs').addEventListener('transitionend', function(e){
+    if(e.propertyName === 'transform'){ var s = S(); if(s && s.relayout) s.relayout(); }
+  });
+
+  // ---- escape: close the file menu (deck handles its own panels) -----------
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Escape') return;
+    if(exportOpen){ setMenu(false); return; }
+  });
+
+  // ---- edit (only when the Pro engine reported editing is available) -------
+  // window.__SLV_EDITABLE__ is injected by the viewer when the engine's meta says so;
+  // with the OSS engine it is absent, so the Edit affordance never appears.
+  if(EDITABLE){
+    var editGrp = q('#slv-edit-grp'), editDiv = q('#slv-edit-div');
+    if(editGrp) editGrp.hidden = false;
+    if(editDiv) editDiv.hidden = false;
+    var editBtn = q('#slv-edit');
+    function editing(){ var s = S(); return !!(s && s.editing && s.editing()); }
+    // Editor-mode switch: Slides (element editor) <-> Theme (master editor). Theme opens the
+    // master panel and frees the left dock by closing the slide navigator.
+    var modeSlide = q('#slv-mode-slide'), modeMaster = q('#slv-mode-master');
+    function setMode(master){
+      if(modeSlide) modeSlide.setAttribute('aria-pressed', master ? 'false' : 'true');
+      if(modeMaster) modeMaster.setAttribute('aria-pressed', master ? 'true' : 'false');
+      var s = S();
+      if(master) setThumbs(false);                       // the theme panel docks where the navigator does
+      if(s && s.editMaster) s.editMaster(master);
+    }
+    if(modeSlide) modeSlide.addEventListener('click', function(){ setMode(false); });
+    if(modeMaster) modeMaster.addEventListener('click', function(){ setMode(true); });
+    function setEdit(on){
+      var s = S(); if(!s || !s.edit) return;
+      s.edit(on);
+      if(on && s.__editor){ s.__editor.requestImage = function(){ HOST.requestImage(); }; }
+      if(!on) setMode(false);                             // leaving edit mode also closes the theme panel
+      body.classList.toggle('slv-editmode', on);
+      editBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      show(); setTimeout(syncBarH, 220);    // editing bar changes the bar height → republish it
+    }
+    editBtn.addEventListener('click', function(){ setEdit(!editing()); });
+    _editApi = { editing: editing, setEdit: setEdit };   // let Present drop/restore edit mode
+    // Save: collect edits and hand them to Rust to persist + reload. Shared by the
+    // editing-bar Save button and the File menu's Save item.
+    function doSave(){
+      var s = S(); if(!s) return;
+      var edits = s.collectEdits ? s.collectEdits() : [];
+      if(!edits.length) return;                        // nothing changed
+      HOST.saveEdits(edits);                           // desktop: ipc → Rust persists+reloads; web: POST /patch (+/save)
+    }
+    saveHandler = doSave;
+    var miSave = q('#slv-mi-save'); if(miSave) miSave.hidden = false;   // reveal Save in the File menu
+    q('#slv-save').addEventListener('click', function(){
+      var s = S(); var edits = (s && s.collectEdits) ? s.collectEdits() : [];
+      if(!edits.length){ setEdit(false); return; }     // nothing to save → just leave edit mode
+      doSave();
+    });
+    // Insert group → the editor's insertion API. Text/image place immediately; the
+    // shapes arm a draw tool (crosshair, then click-drag on the slide to size).
+    Array.prototype.forEach.call(q('#slv-insert-grp').querySelectorAll('[data-ins]'), function(b){
+      b.addEventListener('click', function(){
+        var s = S(); if(!s || !s.__editor) return;
+        var k = b.getAttribute('data-ins');
+        if(k === 'text') s.__editor.insertText();
+        else if(k === 'image'){ if(s.__editor.requestImage) s.__editor.requestImage(); }
+        else if(k === 'library'){ try{ if(window.parent) window.parent.postMessage({ type:'slaide:open-gallery' }, '*'); }catch(e){} }
+        else s.__editor.insertShape(k);
+      });
+    });
+    // Ribbon tabs: switch which command band is visible (Home / Insert / Arrange).
+    var tabsEl = q('#slv-tabs'), bandEl = q('#slv-band');
+    if(tabsEl && bandEl){
+      Array.prototype.forEach.call(tabsEl.querySelectorAll('.slv-tab'), function(t){
+        t.addEventListener('click', function(){
+          var name = t.getAttribute('data-tab');
+          Array.prototype.forEach.call(tabsEl.querySelectorAll('.slv-tab'), function(x){ x.setAttribute('aria-selected', x===t ? 'true' : 'false'); });
+          Array.prototype.forEach.call(bandEl.querySelectorAll('.slv-bandtab'), function(bt){ bt.classList.toggle('slv-active', bt.getAttribute('data-tab')===name); });
+          syncBarH();
+        });
+      });
+    }
+    // Arrange / Element / History actions → the editor API (act on the current selection).
+    Array.prototype.forEach.call(q('#slv-band').querySelectorAll('[data-act]'), function(b){
+      b.addEventListener('click', function(){
+        var s = S(), ed = s && s.__editor; var a = b.getAttribute('data-act');
+        if(a === 'undo'){ if(s && s.undo) s.undo(); return; }
+        if(a === 'redo'){ if(s && s.redo) s.redo(); return; }
+        if(!ed) return;
+        if(a === 'centerH') ed.align('h');
+        else if(a === 'centerV') ed.align('v');
+        else if(a === 'front') ed.order('front');
+        else if(a === 'back') ed.order('back');
+        else if(a === 'duplicate') ed.duplicate();
+        else if(a === 'delete') ed.deleteSelected();
+      });
+    });
+    // Editing is the default mode in the editor build: enter it once the deck is ready.
+    // (Esc is left to the editor for deselect; toggle edit off with the Edit button.)
+    (function enterEdit(){ var s = S(); if(s && s.edit){ if(!editing()) setEdit(true); } else setTimeout(enterEdit, 30); })();
+  }
+
+  // ---- init ---------------------------------------------------------------
+  syncNav(); syncZoom(); applyCaps(); applyExportTargets();
+  // Apply persisted chrome state (both default ON). slides_visible opens the navigator;
+  // toolbar_pinned keeps the bar docked open — otherwise briefly reveal so it's discoverable.
+  if(PREFS.slides_visible !== false) setThumbs(true);
+  if(PREFS.toolbar_pinned !== false){ setPinned(true); }
+  else { show(); setTimeout(scheduleHide, 1500); }
+  // The deck's layout may settle after our init; once loaded, re-apply the dock fit.
+  window.addEventListener('load', function(){
+    var s = S(); if(!s || !s.relayout) return;
+    if(q('#slv-thumbs').classList.contains('slv-open')) setDock(true);
+    s.relayout();
+  });
+})();
+</script>

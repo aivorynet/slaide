@@ -1,0 +1,187 @@
+# yaml-language-server: $schema=https://getslaide.com/schema/v1.json
+schema: slaide/1
+name: vela
+description: A dark pitch-deck theme — Open Sans, navy ground, multi-accent gradient highlights.
+
+canvas: { aspect: "16:9", width: 1920, height: 1080 }
+
+fonts:
+  sans:    { family: "Open Sans",      provider: google, weights: [300, 400, 600, 700] }
+  display: { family: "Open Sans",      provider: google, weights: [800] }
+  mono:    { family: "IBM Plex Mono",  provider: google, weights: [400, 600] }
+
+typeScale:
+  base: "24px"
+  ratio: 1.2
+  steps:
+    stat:    "110px"
+    hero:    "80px"
+    h1:      "72px"
+    h2:      "44px"
+    h3:      "36px"
+    h4:      "28px"
+    body:    "24px"
+    caption: "22px"
+    small:   "18px"
+
+colors:
+  palette:
+    navy:   "#0B1220"
+    panel:  "#121A2B"
+    ink:    "#050810"
+    white:  "#F8FAFC"
+    muted:  "#8B93A7"
+    blue:   "#5B8CFF"
+    purple: "#A855F7"
+    teal:   "#2DD4BF"
+    green:  "#34D399"
+    orange: "#FB923C"
+    pink:   "#EC4899"
+  roles:
+    background: "{palette.navy}"
+    surface:    "{palette.panel}"
+    text:       "{palette.white}"
+    heading:    "{palette.white}"
+    accent:     "{palette.blue}"
+    link:       "{palette.blue}"
+    muted:      "{palette.muted}"
+
+gradients:
+  brand:  "linear-gradient(100deg, #5B8CFF 0%, #A855F7 50%, #2DD4BF 100%)"
+  purple: "linear-gradient(120deg, #A855F7, #EC4899)"
+  teal:   "linear-gradient(120deg, #2DD4BF, #5B8CFF)"
+  blue:   "linear-gradient(120deg, #5B8CFF, #818CF8)"
+
+tokens:
+  "--slide-padding": "120px"
+  "--chrome-pad": "120px"
+  "--chrome-top": "44px"
+  "--chrome-bottom": "44px"
+  "--chrome-size": "22px"
+  "--chrome-foot-size": "40px"
+  "--chrome-page-size": "22px"
+  "--logo-h": "34px"
+  # ordered colour cycle for ```echart data series (falls back to a default palette)
+  "--chart-colors": "#5B8CFF, #A855F7, #2DD4BF, #34D399, #FB923C, #EC4899"
+
+backgrounds:
+  navy:  { type: solid, color: "{palette.navy}" }
+  team:  { type: gradient, stops: ["#0B1220 0%", "#0B1220 50%", "#05070D 50%", "#05070D 100%"], angle: 90 }
+  paper: { type: solid, color: "#EEEFF1" }
+
+variants:
+  light:
+    roles: { background: "#EEEFF1", surface: "#FFFFFF", text: "#0B1220", heading: "#0B1220", muted: "#5A6072" }
+
+transitions: { default: fade, duration: 420 }
+
+chrome:
+  header: { right: "{{date}}  |  © {{company}}" }
+  footer: { left: "{{footer}}", right: "{{pagePadded}} / {{totalPadded}}" }
+  logoPos: top-left
+  logo: '<svg viewBox="0 0 120 40"><text x="0" y="31" font-family="Open Sans, Inter, sans-serif" font-size="30" font-weight="800" letter-spacing="2" fill="currentColor">VELA</text></svg>'
+
+layouts:
+  cover:
+    background: navy
+    chrome: header
+    logo: false
+    align: start
+    areas: [". diagram", "brand diagram", "title diagram", "sub diagram"]
+    rows: "1fr auto auto auto"
+    cols: "1.1fr 0.9fr"
+    gap: "0.3em 3em"
+    slots:
+      brand:   { type: body, style: { align: left } }
+      title:   { type: title, style: { font: display, size: hero, weight: "800", leading: "0.98", maxw: "7ch" } }
+      sub:     { type: subtitle, style: { size: "32px", color: white, weight: "400" } }
+      diagram: { type: image, style: { valign: center } }
+
+  statement:
+    background: navy
+    align: center
+    areas: ["title title title", "s1 s2 s3"]
+    rows: "auto 1fr"
+    cols: "1fr 1fr 1fr"
+    gap: "1.4em"
+    slots:
+      title: { type: title, style: { size: "80px", weight: "800" } }
+      s1: { type: body, style: { align: center, valign: center } }
+      s2: { type: body, style: { align: center, valign: center } }
+      s3: { type: body, style: { align: center, valign: center } }
+
+  title-content:
+    background: navy
+    areas: ["title", "body"]
+    rows: "auto 1fr"
+    slots:
+      title: { type: title, style: { size: h1, weight: "800" } }
+      body:  { type: body }
+
+  content-aside:
+    background: navy
+    areas: ["title title", "body aside"]
+    rows: "auto 1fr"
+    cols: "1.45fr 1fr"
+    gap: "3em"
+    slots:
+      title: { type: title, style: { size: h1, weight: "800" } }
+      body:  { type: body }
+      aside: { type: body, style: { color: muted, size: caption } }
+
+  two-col:
+    background: navy
+    areas: ["title title", "left right"]
+    rows: "auto 1fr"
+    cols: "1fr 1fr"
+    gap: "3em"
+    slots:
+      title: { type: title, style: { size: h1, weight: "800" } }
+      left:  { type: body }
+      right: { type: body }
+
+  team:
+    background: team
+    areas:
+      - "title title"
+      - "lname rname"
+      - "lbio  rbio"
+      - "logos logos"
+    rows: "auto 400px 1fr auto"
+    cols: "1fr 1fr"
+    gap: "0.2em 2.4em"
+    slots:
+      title: { type: title, style: { size: "54px", weight: "800" } }
+      lname: { type: title, style: { size: "72px", weight: "800", leading: "0.95", valign: center } }
+      lbio:  { type: body,  style: { size: "28px", color: muted, valign: top } }
+      rname: { type: title, style: { size: "72px", weight: "800", leading: "0.95", valign: center } }
+      rbio:  { type: body,  style: { size: "28px", color: muted, valign: top } }
+      logos: { type: body,  style: { valign: bottom } }
+
+  closing:
+    chrome: false
+    background: paper
+    align: center
+    areas: ["card"]
+    rows: "1fr"
+    cols: "1fr"
+    slots:
+      card: { type: body, style: { box: ink, color: white, align: center, valign: center, justify: center, maxw: "60%" } }
+
+  section:
+    background: navy
+    align: center
+    areas: ["title"]
+    rows: "1fr"
+    slots:
+      title: { type: title, style: { size: hero, weight: "800", align: center } }
+
+  media-split:
+    background: navy
+    areas: ["media copy"]
+    rows: "1fr"
+    cols: "1.25fr 1fr"
+    gap: "3.4em"
+    slots:
+      media: { type: media }
+      copy:  { type: body, style: { valign: center } }
