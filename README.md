@@ -68,7 +68,9 @@ Slides split on `---`. `:: name ::` routes Markdown into a theme slot. `>>>` is 
 
 ## The free viewer
 
-`slaide-view` is a native app that opens any deck in its own window, with no Node on the target. Download it from [Releases](https://github.com/aivorynet/slaide/releases), or build it with `npm run build:viewer`. It opens folders, single files, and packed `.slaidec` bundles, presents full screen, and exports PDF.
+`slaide-view` is a standalone native viewer. Download it from [Releases](https://github.com/aivorynet/slaide/releases), unzip, and run it. No Node needed. It opens folders, single files, and packed `.slaidec` bundles, presents full screen, and exports PDF.
+
+Run `slaide-view --register` once to associate the `.slaide` and `.slaidec` file types, then you can double-click any deck to open it. (Or build from source with `npm run build:viewer`.)
 
 ## For AI agents
 
