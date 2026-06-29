@@ -1,6 +1,6 @@
 # slaide master / theme authoring
 
-A **master** is a YAML file defining the whole visual system as data, so one theme serves many decks and an agent can both *use* and *author* it. Reference it from a deck with `master: ./your-theme.slaide.yaml` (omit → bundled `aurora`).
+A **master** is a YAML file defining the whole visual system as data, so one theme serves many decks and an agent can both *use* and *author* it. Reference it from a deck with `master: ./your-theme.slaide.yaml`, or use a bundled theme by name (`master: aurora`); omit `master:` and you get `aurora`.
 
 ## Top-level shape
 
@@ -22,6 +22,50 @@ layouts:   { … }          # grid templates with typed slots
 ```
 
 Sizes are in canvas px; the runtime scales each slide to fit (letterboxed). Match your source design (e.g. `1920×1080`) so px == design pt.
+
+## Minimal master (copy, then customise)
+
+A complete, compiling starter. Swap the palette + fonts for the brand, add layouts as needed.
+
+```yaml
+schema: slaide/1
+name: my-theme
+canvas: { aspect: "16:9", width: 1280, height: 720 }
+fonts:
+  sans:    { family: "Inter",    provider: google, weights: [400, 600, 700] }
+  display: { family: "Fraunces", provider: google, weights: [600, 900] }
+typeScale:
+  base: "26px"
+  ratio: 1.2
+  steps: { h1: 4, h2: 3, h3: 2, body: 0, caption: -1 }
+colors:
+  palette: { ink: "#0B1220", paper: "#F8FAFC", brand: "#3B82F6" }
+  roles:
+    background: "{palette.ink}"
+    text:       "{palette.paper}"
+    heading:    "{palette.paper}"
+    accent:     "{palette.brand}"
+layouts:
+  cover:
+    align: center
+    areas: ["title", "subtitle"]
+    rows: "auto auto"
+    slots:
+      title:    { type: title,    style: { font: display, size: h1, weight: "900" } }
+      subtitle: { type: subtitle, style: { size: h3, color: accent } }
+  title-content:
+    areas: ["title", "body"]
+    rows: "auto 1fr"
+    slots:
+      title: { type: title, style: { size: h2 } }
+      body:  { type: body }
+  section:
+    align: center
+    areas: ["title"]
+    rows: "1fr"
+    slots:
+      title: { type: title, style: { font: display, size: h1, align: center } }
+```
 
 ## fonts / typeScale
 

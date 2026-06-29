@@ -6,6 +6,7 @@
 // for scripts and CI. No third-party deps: prompts use node:readline/promises.
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { detectClis, type DetectedCli } from './detect.js';
 import { ADAPTERS, allSpecs, getAdapter, type CliAdapter, type InstallContext, type Scope } from './registry.js';
 import { skillSourceDir, readSkillName } from './skills.js';
@@ -64,6 +65,36 @@ async function promptYesNo(question: string, def: boolean): Promise<boolean> {
   const ans = await ask(`${question} ${def ? '[Y/n]' : '[y/N]'} `);
   if (!ans) return def;
   return /^y/i.test(ans);
+}
+
+/** Is a Playwright Chromium build present? slaide uses it for export and the shoot/montage see-it loop. */
+async function chromiumPresent(): Promise<boolean> {
+  try {
+    const pw: any = await import('playwright');
+    const p: string = pw.chromium.executablePath();
+    return !!p && existsSync(p);
+  } catch {
+    return false;
+  }
+}
+
+/** Chromium powers PDF/PPTX/image export and `shoot --montage` (the image an agent reads to SEE
+ *  the deck). If it is missing, say why and offer to install it. */
+async function maybeOfferChromium(opts: InstallOptions): Promise<void> {
+  if (await chromiumPresent()) return;
+  const cmd = 'npx playwright install chromium';
+  console.log('');
+  console.log('Chromium is not installed. slaide needs it to export PDF / PPTX / images and to run');
+  console.log('`slaide shoot --montage` — the contact sheet an agent reads to SEE the rendered deck.');
+  const run = opts.yes || (isInteractive(opts) && (await promptYesNo('Install Chromium now?', true)));
+  if (!run) {
+    console.log(`Install it later with: ${cmd}`);
+    return;
+  }
+  console.log(`Running: ${cmd}`);
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync(cmd, { shell: true, stdio: 'inherit' });
+  if (r.status !== 0) console.log(`Chromium install did not finish. Run it manually: ${cmd}`);
 }
 
 interface Chosen {
@@ -139,5 +170,6 @@ export async function runInstall(opts: InstallOptions): Promise<number> {
       if (row.mcp) console.log(`  mcp   -> ${row.mcp.registered ? 'registered (' + row.mcp.method + ')' : 'skipped: ' + row.mcp.detail}`);
     }
   }
+  if (!opts.json && !opts.dryRun) await maybeOfferChromium(opts);
   return 0;
 }

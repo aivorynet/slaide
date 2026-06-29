@@ -51,7 +51,14 @@ export function resolveMasterPath(headmatter: Record<string, unknown>, deckDir: 
   const ref = typeof headmatter.master === 'string' ? headmatter.master : null;
   if (!ref) return existsSync(DEFAULT_MASTER) ? DEFAULT_MASTER : '';
   const abs = resolve(deckDir, ref);
-  return existsSync(abs) ? abs : ref;
+  if (existsSync(abs)) return abs;
+  // A bare name (no path or extension) may be a bundled theme, e.g. `master: aurora` — the
+  // identifier `slaide themes` / slaide_list_themes advertises. Resolve it against the bundle.
+  if (!/[\\/.]/.test(ref)) {
+    const bundled = resolve(dirname(DEFAULT_MASTER), `${ref}.slaide.yaml`);
+    if (existsSync(bundled)) return bundled;
+  }
+  return ref;
 }
 
 export function compileSource(source: string, deckDir: string): CompileResult {

@@ -15,16 +15,17 @@ One `.slaide` file (Markdown + a small YAML header) → web deck + PDF + PPTX. Y
 Run as `npx @aivorynet/slaide <cmd>` (or `npm run slaide -- <cmd>` where a script exists; at a monorepo root `npm run slaide -w @aivorynet/slaide -- <cmd>`, which shifts cwd to `core/` — pass **absolute** deck paths).
 
 ## Workflow
-1. **Read** `reference.md` (language) and `themes.md` (masters/layouts/footguns). `examples/` is a worked deck + theme.
-2. **`slaide slots <deck>`** — prints the master's real layouts, slots, colours, gradients, sizes, transitions. Reference these **by name**. (Run on the deck, not the master.)
-3. **Write** the `.slaide` — and the master, if authoring one.
-4. **`slaide validate <deck> --strict`** — a **gate**: must be clean. Every `unknown-*` / `low-contrast` / `non-embeddable-font` means something renders wrong even when it "looks valid".
-5. **See it.** You can't open a browser, so: **`slaide shoot <deck> --montage out/sheet.jpg`** tiles every slide into one JPEG — **Read that image.** It's the only way to catch the common defects: overlapping / clipped text, hollow cards, weak contrast, overflow. Iterate until it looks genuinely professional — not just until validate passes.
+1. **Brand first — check, then ask.** Scan the project/context for brand assets: colours, fonts, a logo, an existing `*.slaide.yaml` master, a brand doc. Found a master → use it. Found brand → build the master around it. Found nothing → **ask** the user: brand colours? logo? an existing theme, or author one from scratch? Prefer authoring a **new master** over copying an example.
+2. **Read** `reference.md` (language) and `themes.md` (the master format + footguns) before authoring a master. Worked example decks: https://github.com/aivorynet/slaide/tree/main/examples
+3. **`slaide slots <deck>`** — prints the master's real layouts, slots, colours, gradients, sizes, transitions. Reference these **by name**. (Run on the deck, not the master.)
+4. **Write** the `.slaide` — and the master, if authoring one.
+5. **`slaide validate <deck> --strict`** — a **gate**: must be clean. Every `unknown-*` / `low-contrast` / `non-embeddable-font` means something renders wrong even when it "looks valid".
+6. **See it.** You can't open a browser, so: **`slaide shoot <deck> --montage out/sheet.jpg`** tiles every slide into one JPEG — **Read that image.** It's the only way to catch the common defects: overlapping / clipped text, hollow cards, weak contrast, overflow. Iterate until it looks genuinely professional — not just until validate passes.
 
 ## Format in 30 seconds
 ```
 ---
-master: ./theme.slaide.yaml      # omit → bundled "aurora"
+master: ./theme.slaide.yaml      # path, or "aurora" (bundled); omit → aurora
 title: My Talk
 ~transition: slide-left          # `~` cascades to later slides
 ---
@@ -46,8 +47,8 @@ layout: title-content
 - `:: name ::` routes Markdown into a layout slot. `[text]{.class}` = styled span (colour `.accent`, gradient `.grad`, size `.lg`). `>>>` = build. `??? text` = note. Inside ``` fences these sigils are literal.
 - Charts: ` ```echart ` (data viz, ECharts option as JSON) and ` ```mermaid ` (diagrams) → theme-coloured SVG. Put a chart in a slot with height (a `1fr` row).
 
-## Authoring a master → themes.md
-Define fonts, a type scale, two-tier colour (palette + roles), gradients, backgrounds, grid layouts, chrome — all data. Reference **roles, not hex**, so a reskin is a palette swap. Past "tidy", give the deck **one signature** (a faint logo-derived motif or a recurring accent panel) and vary composition slide to slide. The load-bearing footguns — dark-on-dark text, hollow `box:` cards, chrome-corner collisions — are flagged in `themes.md`; heed them. A deck about slaide itself: use the shipped brand in the sibling `slaide-hugo` repo, don't invent one.
+## The master (theme)
+Use the bundled theme — omit `master:` or set `master: aurora` — or author your own (preferred for branded decks). **Read `themes.md` for the format before writing one**: fonts, a type scale, two-tier colour (palette + roles), gradients, backgrounds, grid layouts, chrome — all data. Reference **roles, not hex**, so a reskin is a palette swap. Past "tidy", give the deck **one signature** (a faint logo-derived motif or a recurring accent panel) and vary composition slide to slide. The load-bearing footguns — dark-on-dark text, hollow `box:` cards, chrome-corner collisions — are flagged in `themes.md`; heed them. A deck about slaide itself: use the shipped brand in the sibling `slaide-hugo` repo, don't invent one.
 
 ## Commands (prefix `npx @aivorynet/slaide`)
 | Command | Does |

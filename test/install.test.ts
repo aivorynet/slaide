@@ -77,7 +77,7 @@ for (const [id, rel] of [
       const dest = join(dir, rel);
       expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
       expect(existsSync(join(dest, 'reference.md'))).toBe(true);
-      expect(existsSync(join(dest, 'examples'))).toBe(true);
+      expect(existsSync(join(dest, 'themes.md'))).toBe(true);
       expect(readFileSync(join(dest, 'SKILL.md'), 'utf8')).toMatch(/name:\s*slaide/);
     },
     30000,

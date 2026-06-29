@@ -6,6 +6,18 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-29
+
+### Fixed
+
+- `master: aurora` (any bundled theme name) now resolves to the bundled theme, matching what `slaide themes` and `slaide_list_themes` advertise. Previously only a file path resolved.
+
+### Changed
+
+- The agent skill now guides authoring a master from the bundled `themes.md` (with a copy-paste minimal master), prefers a fresh master over copying an example, and checks the project for brand assets (colours, logo, existing theme) before asking the user.
+- `slaide install` notices a missing Playwright Chromium and offers to install it (needed for export and for the `shoot --montage` see-it loop).
+- Example decks are no longer bundled in the package; the skill links to them on GitHub.
+
 ## [1.0.1] - 2026-06-29
 
 ### Changed
@@ -30,6 +42,7 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/aivorynet/slaide/releases/tag/v1.0.2
 [1.0.1]: https://github.com/aivorynet/slaide/releases/tag/v1.0.1
 [1.0.0]: https://github.com/aivorynet/slaide/releases/tag/v1.0.0
