@@ -28,7 +28,6 @@ jobs:
         include:
           - { os: ubuntu-latest,  target: linux-x64,    archive: tar.gz }
           - { os: macos-latest,   target: macos-arm64,  archive: tar.gz }
-          - { os: macos-13,       target: macos-x64,    archive: tar.gz }
           - { os: windows-latest, target: windows-x64,  archive: zip }
     runs-on: ${{ matrix.os }}
     steps:
