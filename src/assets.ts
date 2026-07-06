@@ -54,6 +54,10 @@ export function getSpec(): string {
   return readDoc('docs/spec.md', '# slaide spec\n(Spec document not found.)');
 }
 
+export function getGrammar(): string {
+  return readDoc('docs/grammar.md', '# slaide grammar\n(Grammar document not found.)');
+}
+
 export function getThemeSchema(): string {
   const p = join(root(), 'docs/themes.md');
   if (existsSync(p)) return readFileSync(p, 'utf8');

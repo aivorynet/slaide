@@ -49,8 +49,9 @@ const REGION_RE = /^::\s*([\w-]+)\s*::\s*$/;
 
 // Keys that legitimately appear in slide frontmatter. Used only to detect a
 // config-shaped *body* mistakenly eaten as frontmatter (see ambiguous-frontmatter).
-const KNOWN_SLIDE_KEYS = new Set([
-  'layout', 'background', 'transition', 'transition-ms', 'transition-ease', 'variant', 'chrome', 'footer', 'logo', 'morph', 'notes',
+// Exported as the canonical frontmatter-key set (see src/vocab.ts).
+export const KNOWN_SLIDE_KEYS = new Set([
+  'layout', 'background', 'transition', 'transition-ms', 'transition-ease', 'variant', 'chrome', 'footer', 'logo', 'morph', 'notes', 'progress',
   'title', 'author', 'company', 'date', 'subtitle',
 ]);
 

@@ -6,6 +6,30 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-07-06
+
+### Changed
+
+- Speaker notes now **dock beneath the slide** instead of floating over it: the slide shrinks to make room and the notes panel no longer overlaps slide content or the bottom strip.
+- The deck **language vocabulary is single-sourced** and shared across the parser, compiler and renderer, with a docs-drift lint that keeps the grammar reference in sync.
+- Master loading is unified through `parseMaster`, and structured gradient stops (`{ color, pos }`) are normalized to CSS fragments — so gradient backgrounds render whichever way they're authored.
+
+### Added
+
+- The agent skill now bundles the full deck **grammar reference** (plus an expanded skill reference), so authoring assistants have the complete grammar on hand.
+
+## [1.0.3] - 2026-06-30
+
+### Added
+
+- `slaide app [deck]` opens a deck in the native viewer/editor. The app (viewer + engine) is fetched and verified (checksum + signature) on first run, and the `.slaide` file type is registered — so `npm install -g @aivorynet/slaide` is the only install step. `slaide upgrade` updates the app in place.
+- `slaide auth login | logout | status` signs in to Slaide Pro from the CLI (unlocks in-place editing).
+- The CLI checks npm for a newer release once a day and prints a one-line update notice. Set `SLAIDE_AUTO_UPDATE=1` to update automatically, or `SLAIDE_NO_UPDATE=1` to silence it.
+
+### Fixed
+
+- `slaide --version` now reports the real package version (was hardcoded).
+
 ## [1.0.2] - 2026-06-29
 
 ### Fixed
@@ -42,7 +66,9 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/aivorynet/slaide/releases/tag/v1.0.4
+[1.0.3]: https://github.com/aivorynet/slaide/releases/tag/v1.0.3
 [1.0.2]: https://github.com/aivorynet/slaide/releases/tag/v1.0.2
 [1.0.1]: https://github.com/aivorynet/slaide/releases/tag/v1.0.1
 [1.0.0]: https://github.com/aivorynet/slaide/releases/tag/v1.0.0

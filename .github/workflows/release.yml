@@ -1,15 +1,16 @@
 name: Release
 
 # On a version tag (the GitLab mirror pushes `v*` here), this:
-#   1. builds the free native viewer (slaide-view) + lean engine for Linux, macOS, Windows,
-#   2. attaches them to a GitHub Release with notes from CHANGELOG.md,
-#   3. publishes the `slaide` package to npm with provenance.
-# Run it manually (workflow_dispatch) to test the build; manual runs skip release + npm.
+#   1. builds the native viewer + lean engine on Linux, macOS, Windows as a cross-platform
+#      compile smoke test (the artifacts are not shipped);
+#   2. publishes the `@aivorynet/slaide` package to npm with provenance.
+# Run it manually (workflow_dispatch) to test the build; manual runs skip npm.
 #
-# The binaries are unsigned community builds, so macOS Gatekeeper / Windows SmartScreen warn
-# on first run. The signed official binary lives at getslaide.com.
+# The GitHub *Release* (the downloadable binaries) is published by the private build pipeline,
+# which produces the official Pro-capable, signed binaries — see the monorepo's .gitlab-ci.yml
+# `publish:dist` job. This workflow intentionally does NOT create a release (no collision).
 #
-# Required repo secret: NPM_TOKEN (an npm automation token with publish rights for `slaide`).
+# OIDC trusted publishing handles npm auth (no NPM_TOKEN needed).
 
 on:
   push:
@@ -80,6 +81,10 @@ jobs:
           name: slaide-${{ matrix.target }}
           path: out/slaide-${{ matrix.target }}.*
 
+  # The official, signed, Pro-capable GitHub Release is published by the private .gitlab-ci.yml
+  # `publish:dist` job (it has the closed `pro/` sources + the signing key). This workflow only
+  # smoke-builds the OSS tree and publishes the npm package.
+
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
@@ -104,26 +109,3 @@ jobs:
           else
             npm publish --provenance --access public
           fi
-
-  release:
-    name: Publish release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-      - name: Release notes from CHANGELOG
-        shell: bash
-        run: |
-          VER="${GITHUB_REF_NAME#v}"
-          awk -v h="## [$VER]" 'index($0,h)==1{p=1;next} p&&(index($0,"## [")==1||/^\[[^]]*\]: /){exit} p' CHANGELOG.md > NOTES.md || true
-          [ -s NOTES.md ] || echo "Release $VER" > NOTES.md
-      - uses: softprops/action-gh-release@v2
-        with:
-          body_path: NOTES.md
-          files: dist/**/*

@@ -47,12 +47,14 @@ colors:
     accent:     "{palette.brand}"
 layouts:
   cover:
-    align: center
-    areas: ["title", "subtitle"]
+    areas: ["title visual", "subtitle visual"]
     rows: "auto auto"
+    cols: "1.1fr 0.9fr"
+    gap: "0.5em 3em"
     slots:
       title:    { type: title,    style: { font: display, size: h1, weight: "900" } }
       subtitle: { type: subtitle, style: { size: h3, color: accent } }
+      visual:   { type: image,    style: { valign: center } }
   title-content:
     areas: ["title", "body"]
     rows: "auto 1fr"
@@ -69,7 +71,7 @@ layouts:
 
 ## fonts / typeScale
 
-**Use real Google Fonts only** (`provider: google`) — pick families that actually exist on Google Fonts and embed (avoid **JetBrains Mono**, which doesn't). A `display` (headings) + a `sans` (body) is plenty; add a `mono` role only if the deck shows code. A `provider: system`/`local` font that isn't a common system font (Arial, Calibri, Georgia…) **warns** (`non-embeddable-font`): it won't embed in the `.pptx`, so PowerPoint substitutes it off your machine.
+**Use real Google Fonts only** (`provider: google`) — pick families that actually exist on Google Fonts. A `display` + `sans` is plenty; add `mono` only if the deck shows code. A `provider: system`/`local` font that isn't a common system font (Arial, Calibri, Georgia…) **warns** (`non-embeddable-font`): it won't embed in `.pptx`.
 
 ```yaml
 fonts:
@@ -195,6 +197,7 @@ layouts:
 | `box` | surface panel (bg + padding + radius) | `true`, a colour role/palette name (preferred), a **named master gradient** (`box: brand` → padded, rounded, gradient hero/closing panel), or a raw hex / CSS colour / gradient |
 | `bg` | background of the slot region | any CSS colour / gradient (literal) |
 | `anchor` | absolutely position the slot | `"x% y% w% h%"` of the canvas |
+| `pad` / `opacity` / `radius` / `border` / `rotate` | fine control — padding / opacity / border-radius / border / rotation (also emitted by the importer) | CSS values (`rotate` accepts a bare deg or a full `transform`) |
 
 `color:`/`box:`/`fill:` are validated against the master — an unresolved name warns, so `validate` can't call an invisible-text slide valid. Run `slaide slots` for legal names.
 
@@ -208,8 +211,19 @@ Inline `[text]{.class}` resolves against this master: **colour** = any `palette`
 
 ## Tips for AI authors
 
-- Reference **roles** and **scale steps**, not raw hex/px, so a reskin is a palette swap. Add a layout by adding an `areas` map + `slots` — no code.
-- **Cards (`box:`) — kill hollow tops.** A `box:` is bg + padding + radius only (solid colour — **no gradient/shadow/border**). With no `valign` a card **stretches to its grid row** and pins text to the top — hollow in a tall `1fr` row. Two fixes: **`valign: center`** shrinks the card to its content and centres it; or, to keep a row of cards equal height, put them in an **`auto`** row and centre that block with spacer rows (`rows: "auto 1fr auto 1fr"`). On a light ground, tint the card surface off-white vs the page so it reads.
-- **Signature, not just tidy:** give the deck one repeated motif (a faint logo-derived shape or a recurring accent panel) and vary composition slide to slide. Make the **cover and closing command** — don't leave half the canvas empty: pair a strong text column with a full-height brand/gradient panel or full-bleed motif.
-- **Inline `svg` needs a size:** give the `<svg>` explicit `width`/`height`, or a centered zero-size SVG collapses and vanishes.
-- **A deck about slaide itself?** Use the shipped brand in the sibling `slaide-hugo` repo (`themes/slaide/assets/css/slaide.css` `:root`; `static/images/slaide-*.svg`): slate-azure gradient `#243B6B→#3E6FB0→#6FA8DC` on cream `#FBF7F0` / ink `#15120E`; IBM Plex Sans + JetBrains Mono + Fraunces.
+- Use **roles** and **scale steps**, not raw hex/px — reskin = palette swap.
+- **Cards (`box:`):** bg + padding + radius only (no gradient/shadow/border). Without `valign` a card stretches full-height and pins text top (hollow). Fix: `valign: center` to shrink-wrap, or put cards in an `auto` row with `1fr` spacers. Tint card surface off-white vs the page.
+- **Cover = dramatic hero.** Visual slot FILLS — bold brand SVG, product mock, or illustrated motif at ≥ half the slide, not a small icon. Think Apple keynote: few bold shapes at large scale. Centred text on a gradient is a section divider, not a cover. Never `.grad` text on a gradient bg (vanishes). **Closing** = bold CTA or contact slide (name/role/email/URL for pitch/agency decks). Both must feel intentional.
+- **Brand ground dominates.** Most slides use the brand's background role (warm cream, tinted neutral — not generic white). Dark/gradient = accent moments only (cover, one stat, closing).
+- **No text-only slides — no exceptions.** Every content slide needs a visual: ` ```echart ` for data, inline ` ```svg ` for diagrams/mockups (preferred — precise, brand-styled), `box:` cards, or a stat callout. A comparison/pro-con slide is NOT exempt: use cards, a table, or SVG icons. Mix visual types across the deck — all-SVG or all-cards = monotone.
+- **Vary composition.** Never repeat the same layout archetype — two text+visual slides need structurally different layouts (not image-left twice). Mix archetypes, alternate dark/light grounds. One slide should break the pattern — oversized `.grad` stat, serif quote owning the canvas, or full-bleed visual.
+- **One idea per slide.** Each slide delivers one clear message (4 bullets max). The visual and text reinforce the SAME idea — if the visual still communicates without the text, that's right.
+- **Size contrast.** Pair `hero`/`stat` scale with body text. At least one slide MUST feature a single big number or statement using `.huge` or `.stat` — the audience remembers ONE number from every deck. No decorative accent lines under titles (AI tell).
+- **Use every font role** defined in the master (serif, display, mono).
+- **Whitespace.** `--slide-padding` ≥ 96px, `gap` ≥ 2em. `auto` rows for content, `1fr` spacers to centre. Cards need `pad`.
+- **Avoid `<a>` links in slides.** They aren't clickable during presentations and their `link` role color can override slot `color:`. Write URLs as plain text; style with `[text]{.class}` spans.
+- **Muted text must read at projection scale.** Keep well above 2.5:1 contrast. Never use light-ground `muted` inside a dark `box:`/`bg:` card — set explicit light `color:` instead.
+- **Inline SVG:** explicit `width`/`height` required (collapses without them). Images fill their container (the layout controls sizing via grid areas + padding).
+- **Academic / teaching decks** (symposia, lectures, workshops): clarity over flash. Favour ` ```svg ` / ` ```mermaid ` diagrams for processes and systems, ` ```echart ` for data/results. Use `>>>` heavily for progressive build. Larger body text (≥ h3). Section dividers between topics. End with summary/takeaways/questions, not a sales CTA. High-contrast, clean backgrounds.
+- **Financial / board reports**: data credibility first. Heavy ` ```echart ` (bar, line, waterfall, pie). Stats use `.huge` with exact numbers. Comparison tables via `box:` card grids (Plan vs Actual). Conservative palette — dark text on light ground, accent on KPI highlights only. Section dividers per business unit or period. Cover = clean title + period, not a hero. End with outlook/risks.
+- **A deck about slaide?** Brand from `slaide-hugo` repo: azure `#243B6B→#3E6FB0→#6FA8DC`, cream `#FBF7F0`, ink `#15120E`; IBM Plex Sans + JetBrains Mono + Fraunces.

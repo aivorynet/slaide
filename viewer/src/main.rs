@@ -34,6 +34,7 @@ use windows::core::{Interface, PCWSTR};
 use wry::WebViewExtWindows;
 
 mod register;
+mod upgrade;
 
 #[derive(Debug, Clone)]
 enum UserEvent {
@@ -73,6 +74,9 @@ enum UserEvent {
     AuthLogin,
     AuthLogout,
     AuthDone(bool, String),
+    // Human-readable status from the AuthLogin worker (e.g. "Downloading Pro engine…") while it
+    // self-upgrades an OSS install before signing in. Shown in the title bar + ribbon account chip.
+    AuthProgress(String),
 }
 
 /// Viewer-chrome colour theme. Defaults to `Light` (mirrors the Slaide Pro web look);
@@ -150,7 +154,46 @@ struct Canvas {
     height: f64,
 }
 
+/// Ensure all child processes (e.g. slaide-engine auth login) are killed when the viewer exits.
+/// Uses a Windows Job Object with KILL_ON_JOB_CLOSE: when the viewer process terminates
+/// (for any reason), the OS tears down every child spawned under it.
+#[cfg(windows)]
+fn setup_job_kill_on_close() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateJobObjectW(attrs: *const u8, name: *const u16) -> isize;
+        fn SetInformationJobObject(job: isize, class: u32, info: *const u8, len: u32) -> i32;
+        fn AssignProcessToJobObject(job: isize, process: isize) -> i32;
+        fn GetCurrentProcess() -> isize;
+    }
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+    const JOB_OBJECT_EXT_LIMIT_INFO: u32 = 9;
+    #[repr(C)]
+    struct BasicLimitInfo {
+        per_process_time: i64, per_job_time: i64,
+        limit_flags: u32, _pad1: u32,
+        min_ws: usize, max_ws: usize,
+        active_procs: u32, _pad2: u32,
+        affinity: usize,
+        priority: u32, sched: u32,
+    }
+    #[repr(C)]
+    struct ExtLimitInfo { basic: BasicLimitInfo, _io: [u64; 6], _mem: [usize; 4] }
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job == 0 { return; }
+        let mut info: ExtLimitInfo = std::mem::zeroed();
+        info.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(job, JOB_OBJECT_EXT_LIMIT_INFO,
+            &info as *const _ as *const u8, std::mem::size_of::<ExtLimitInfo>() as u32);
+        AssignProcessToJobObject(job, GetCurrentProcess());
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    setup_job_kill_on_close();
+
     // Never die silently: log panics and show the reason (release has no console).
     std::panic::set_hook(Box::new(|info| {
         let dir = std::env::temp_dir().join("slaide-view");
@@ -237,8 +280,36 @@ fn run(args: Vec<String>) -> Result<()> {
     let ipc_proxy = proxy.clone();
     let load_proxy = proxy.clone();
     let load_pending = pending_pdf.clone();
+    // Deck directory, so the protocol can serve deck-relative assets. Without this a freshly-inserted
+    // image (background-image: url('assets/foo.png')) requested every path back as the deck HTML, so
+    // nothing rendered. Existing images render because the engine inlines them at render time.
+    let proto_deck_dir: std::path::PathBuf = if deck.is_dir() {
+        deck.to_path_buf()
+    } else {
+        deck.parent().map(|p| p.to_path_buf()).unwrap_or_default()
+    };
     let webview = WebViewBuilder::new()
-        .with_custom_protocol("slaide".to_string(), move |_id, _req| {
+        .with_custom_protocol("slaide".to_string(), move |_id, req| {
+            // Any non-root path is a deck-relative asset request → serve the file from disk so inserted
+            // images render live. The root path ("/") serves the deck HTML (or the PDF-print override).
+            let path = req.uri().path();
+            if path != "/" && !path.is_empty() {
+                let rel = pct_decode(path.trim_start_matches('/'));
+                if !rel.is_empty() && !rel.contains("..") {
+                    if let Ok(bytes) = std::fs::read(proto_deck_dir.join(&rel)) {
+                        return Response::builder()
+                            .header("Content-Type", content_type_for(&rel))
+                            .header("Cache-Control", "no-store")
+                            .body(Cow::Owned(bytes))
+                            .unwrap();
+                    }
+                }
+                return Response::builder()
+                    .status(404)
+                    .header("Content-Type", "text/plain")
+                    .body(Cow::Owned(Vec::new()))
+                    .unwrap();
+            }
             let body = proto_override
                 .lock()
                 .ok()
@@ -253,9 +324,9 @@ fn run(args: Vec<String>) -> Result<()> {
                 .unwrap()
         })
         .with_url("slaide://localhost/")
-        // Enable DevTools (right-click → Inspect / F12) so editor issues can be diagnosed
-        // in the real WebView2 — the deck JS behaves subtly differently than a plain browser.
-        .with_devtools(true)
+        // DevTools (right-click → Inspect / F12) only in debug builds — the public release ships
+        // with no developer mode. Build locally with `cargo build` (debug) to diagnose editor JS.
+        .with_devtools(cfg!(debug_assertions))
         .with_on_page_load_handler(move |event, _url| {
             // Once the swapped-in print document has loaded, kick off PrintToPdf.
             if matches!(event, PageLoadEvent::Finished)
@@ -567,9 +638,19 @@ fn run(args: Vec<String>) -> Result<()> {
                     let px = dialog_proxy.clone();
                     let eng = engine.clone();
                     std::thread::spawn(move || {
-                        let (ok, m) = match run_engine_auth(&eng, "login") {
-                            Ok(_) => (true, String::new()),
-                            Err(e) => (false, e.to_string()),
+                        // If this is an OSS install, fetch + verify + swap in the Pro engine first,
+                        // then sign in against it. The swap is in-place (same path), so `eng` and
+                        // the subsequent reload pick up the Pro engine with no extra wiring.
+                        let prog = px.clone();
+                        let report = move |s: &str| {
+                            let _ = prog.send_event(UserEvent::AuthProgress(s.to_string()));
+                        };
+                        let (ok, m) = match upgrade::ensure_pro_engine(&eng, &report) {
+                            Ok(_) => match run_engine_auth(&eng, "login") {
+                                Ok(_) => (true, String::new()),
+                                Err(e) => (false, e.to_string()),
+                            },
+                            Err(e) => (false, format!("Couldn't install Slaide Pro: {e}")),
                         };
                         let _ = px.send_event(UserEvent::AuthDone(ok, m));
                     });
@@ -581,6 +662,15 @@ fn run(args: Vec<String>) -> Result<()> {
                         let _ = run_engine_auth(&eng, "logout");
                         let _ = px.send_event(UserEvent::AuthDone(true, String::new()));
                     });
+                }
+                UserEvent::AuthProgress(s) => {
+                    // Surface upgrade/sign-in progress: title bar + the ribbon's account chip.
+                    window.set_title(&s);
+                    let js = format!(
+                        "window.__slvAccountBusy&&window.__slvAccountBusy({});",
+                        serde_json::to_string(&s).unwrap_or_else(|_| "\"\"".into())
+                    );
+                    let _ = webview.evaluate_script(&js);
                 }
                 UserEvent::AuthDone(ok, m) => {
                     if !ok && !m.is_empty() {
@@ -830,7 +920,27 @@ fn run_engine_auth(engine: &Path, sub: &str) -> Result<()> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    let out = cmd.output()?;
+    let mut child = cmd.spawn()?;
+
+    // For login: stream stdout to intercept the auth URL. The engine's own openBrowser()
+    // fails under CREATE_NO_WINDOW, so we open the browser from the viewer (full desktop).
+    #[cfg(windows)]
+    if sub == "login" {
+        if let Some(stdout) = child.stdout.take() {
+            use std::io::{BufRead, BufReader};
+            for line in BufReader::new(stdout).lines().flatten() {
+                let t = line.trim();
+                if t.starts_with("https://") || t.starts_with("http://") {
+                    let url_file = std::env::temp_dir().join("slaide-signin.url");
+                    if std::fs::write(&url_file, format!("[InternetShortcut]\nURL={t}\n")).is_ok() {
+                        let _ = Command::new("explorer.exe").arg(&url_file).spawn();
+                    }
+                }
+            }
+        }
+    }
+
+    let out = child.wait_with_output()?;
     if out.status.success() {
         return Ok(());
     }
@@ -843,6 +953,48 @@ fn run_engine_auth(engine: &Path, sub: &str) -> Result<()> {
 
 /// Copy a picked image into the deck's `assets/` dir; return the deck-relative,
 /// forward-slashed path to embed in the inserted shape.
+/// Minimal percent-decoder for asset request paths (handles %20 etc.) — avoids a new dependency.
+fn pct_decode(s: &str) -> String {
+    fn hex(c: u8) -> Option<u8> {
+        match c {
+            b'0'..=b'9' => Some(c - b'0'),
+            b'a'..=b'f' => Some(c - b'a' + 10),
+            b'A'..=b'F' => Some(c - b'A' + 10),
+            _ => None,
+        }
+    }
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(hi), Some(lo)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push(hi * 16 + lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Content-Type for a served asset, from its file extension (the image kinds the editor inserts).
+fn content_type_for(rel: &str) -> &'static str {
+    match rel.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "avif" => "image/avif",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        _ => "application/octet-stream",
+    }
+}
+
 fn copy_into_assets(deck: &Path, src: &Path) -> Result<String> {
     let base = if deck.is_dir() {
         deck.to_path_buf()

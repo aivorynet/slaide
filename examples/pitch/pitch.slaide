@@ -7,6 +7,8 @@ author: Vela team
 ~transition: fade
 ---
 layout: cover
+background: navy
+transition: fade
 ---
 :: brand ::
 ```svg

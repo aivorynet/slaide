@@ -16,6 +16,12 @@ const flag = (n: string) => {
 const positional = (n: number) => args.filter((a) => !a.startsWith('--'))[n];
 
 async function main(): Promise<void> {
+  if (cmd === 'edition') {
+    // Edition probe for the native viewer: the OSS engine can only render. The viewer reads this
+    // to decide whether Sign-in should fetch + swap in the Pro engine (see core/viewer upgrade.rs).
+    process.stdout.write('oss\n');
+    return;
+  }
   if (cmd === 'render') {
     const deck = positional(1);
     if (!deck) {

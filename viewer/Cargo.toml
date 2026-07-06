@@ -22,6 +22,11 @@ serde_json = "1.0.150"
 tao = "0.35.3"
 which = "8.0.4"
 wry = "0.55.1"
+# Pro-engine self-upgrade on Sign-in (src/upgrade.rs): fetch + verify + swap the Pro engine.
+ureq = "2.10"
+flate2 = "1.0"
+sha2 = "0.10"
+minisign-verify = "0.2"
 
 [target."cfg(windows)".build-dependencies]
 winresource = "0.1"

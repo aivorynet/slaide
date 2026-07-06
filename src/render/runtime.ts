@@ -40,20 +40,20 @@ export const RUNTIME_JS = String.raw`
     panX = Math.max(-ox, Math.min(ox, panX));
     panY = Math.max(-oy, Math.min(oy, panY));
   }
-  // Docked panels (a left slide navigator, an optional right side panel) reserve gutters
-  // via the --sl-dock-left / --sl-dock-right CSS vars; the stage centers in the *remaining*
-  // width and shifts right by the left gutter. 0 (unset) means full-bleed, as before.
-  function dockVar(name){
-    var v = getComputedStyle(document.documentElement).getPropertyValue(name);
-    var n = parseFloat(v); return isFinite(n) ? n : 0;
-  }
+  function cssVar(cs, name){ var n = parseFloat(cs.getPropertyValue(name)); return isFinite(n) ? n : 0; }
   function scale(){
-    var dl = dockVar('--sl-dock-left'), dr = dockVar('--sl-dock-right');
-    var vw = window.innerWidth - dl - dr, vh = window.innerHeight;
+    var pres = isPresenting();
+    var cs = getComputedStyle(document.documentElement);
+    var dl = pres ? 0 : cssVar(cs,'--sl-dock-left'), dr = pres ? 0 : cssVar(cs,'--sl-dock-right');
+    var dt = pres ? 0 : cssVar(cs,'--sl-dock-top');
+    // Bottom dock = chrome dock (bstrip/filmstrip, absolute) + notes reservation (independent), so
+    // the two writers never clobber each other. .sl-notes sits at --sl-dock-bottom (above the chrome).
+    var db = pres ? 0 : cssVar(cs,'--sl-dock-bottom') + cssVar(cs,'--sl-dock-notes');
+    var vw = window.innerWidth - dl - dr, vh = window.innerHeight - dt - db;
     var fit = Math.min(vw/CW, vh/CH);
     var s = fit * zoomFactor;
     if(zoomFactor<=1){ panX = panY = 0; } else { clampPan(s, vw, vh); }
-    var tx = dl + (vw - CW*s)/2 + panX, ty = (vh - CH*s)/2 + panY;
+    var tx = dl + (vw - CW*s)/2 + panX, ty = dt + (vh - CH*s)/2 + panY;
     stage.style.transform = 'translate('+tx+'px,'+ty+'px) scale('+s+')';
   }
 
@@ -142,6 +142,27 @@ export const RUNTIME_JS = String.raw`
   }
 
   function toggle(sel){ var e=document.querySelector(sel); if(e) e.classList.toggle('sl-open'); updateChrome(); }
+  var NOTES_H = 180;
+  // Dock the notes panel BENEATH the slide (not floating over it). The panel is a fixed sibling;
+  // it reserves its own space via the INDEPENDENT --sl-dock-notes var (summed into the stage fit by
+  // scale()), and anchors at --sl-dock-bottom so it sits flush above the chrome dock (the editor
+  // filmstrip, or nothing). Keeping notes' reservation separate from --sl-dock-bottom means the
+  // bstrip's absolute writes and the notes' toggle never clobber each other (no overlap on toggle).
+  function setNotesOpen(open){
+    var np = document.querySelector('.sl-notes');
+    if(!np) return;
+    if(open === np.classList.contains('sl-open')) return;   // already in the requested state
+    var ds = document.documentElement.style;
+    if(open){ np.classList.add('sl-open'); ds.setProperty('--sl-dock-notes', NOTES_H + 'px'); }
+    else    { np.classList.remove('sl-open'); ds.setProperty('--sl-dock-notes', '0px'); }
+    // innerHTML is populated by the updateChrome() call below (it fills .sl-notes when open).
+    scale();
+    updateChrome();
+  }
+  function toggleNotes(){
+    var np = document.querySelector('.sl-notes');
+    if(np) setNotesOpen(!np.classList.contains('sl-open'));
+  }
 
   // ---- present extras: screen blank (b/w), presenter view, cross-window sync ----------------
   var blanked = '';
@@ -292,13 +313,18 @@ export const RUNTIME_JS = String.raw`
       case 'ArrowLeft': case 'ArrowDown': case 'PageUp': backward(); e.preventDefault(); break;
       case 'Home': goTo(0,1); break;
       case 'End': goTo(slides.length-1,1); break;
-      case 'n': case 'N': toggle('.sl-notes'); break;
+      case 'n': case 'N': toggleNotes(); break;
       case 'f': case 'F': setPresenting(!isPresenting(), true); break;
       case 'p': case 'P': presenter(); break;
       case 'b': case 'B': blank(blanked==='b'?'':'b'); e.preventDefault(); break;
       case 'w': case 'W': blank(blanked==='w'?'':'w'); e.preventDefault(); break;
       case '?': case 'h': toggle('.sl-help'); break;
-      case 'Escape': document.querySelectorAll('.sl-open').forEach(function(e){e.classList.remove('sl-open');}); break;
+      case 'Escape':
+        // Close any open overlay (help, etc.) directly; notes go through setNotesOpen so the
+        // reserved bottom dock unwinds too. (Loop param is el; the outer e is the KeyboardEvent.)
+        document.querySelectorAll('.sl-open').forEach(function(el){ if(!el.classList.contains('sl-notes')) el.classList.remove('sl-open'); });
+        setNotesOpen(false);
+        break;
     }
   });
   // ---- drag-to-pan (only when zoomed in past fit) -------------------------
@@ -347,6 +373,7 @@ export const RUNTIME_JS = String.raw`
   }
   document.addEventListener('fullscreenchange', function(){
     document.body.classList.toggle('sl-presenting', !!document.fullscreenElement);
+    scale();
   });
   var presentBtn = document.querySelector('.sl-present-toggle');
   if(presentBtn) presentBtn.addEventListener('click', function(){ setPresenting(!isPresenting(), true); });
@@ -359,7 +386,7 @@ export const RUNTIME_JS = String.raw`
     relayout: function(){ scale(); }, // recompute the stage fit (e.g. after the dock opens/closes)
     show: function(i){ if(i<0||i>=slides.length) return; activate(i, true); cur=i; updateChrome(); },
     setInteractive: function(on){ navEnabled = on!==false; },
-    toggleNotes: function(){ toggle('.sl-notes'); },
+    toggleNotes: function(){ toggleNotes(); },
     toggleHelp: function(){ toggle('.sl-help'); },
     zoom: function(f){
       zoomFactor = (f==='fit'||!f) ? 1 : Math.max(0.25, Math.min(8, f));

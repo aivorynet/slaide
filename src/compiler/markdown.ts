@@ -133,7 +133,8 @@ function preprocessImages(src: string): string {
 //   size: .xs .sm .md .lg .xl .xxl .huge   .bold  .muted
 // Optional leading `\` escapes the whole construct to a literal.
 const SPAN_RE = /(\\?)\[([^\]]+)\]\{((?:\s*\.[\w#-]+)+\s*)\}/g;
-const SIZE_CLASS: Record<string, string> = {
+// Exported as the canonical span size-class map (see src/vocab.ts).
+export const SIZE_CLASS: Record<string, string> = {
   xs: 'small', sm: 'caption', md: 'h3', lg: 'h2', xl: 'h1', xxl: 'hero', huge: 'stat',
 };
 function preprocessSpans(src: string, tokens: Record<string, string> = {}, warnings?: Warning[], line?: number): string {

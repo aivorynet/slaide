@@ -46,11 +46,25 @@ export function serializeMaster(master: Master): string {
   return MASTER_SCHEMA_HEADER + yaml.dump(orderKeys(master), { lineWidth: 200 });
 }
 
+/** Normalize structured gradient stops ({ color, pos } objects) into CSS fragment strings. */
+function normalizeBgs(m: Record<string, any>): void {
+  const bgs = m.backgrounds;
+  if (!bgs || typeof bgs !== 'object') return;
+  for (const bg of Object.values(bgs) as any[]) {
+    if (bg?.type === 'gradient' && Array.isArray(bg.stops)) {
+      bg.stops = bg.stops.map((s: any) =>
+        typeof s === 'string' ? s : `${s.color ?? ''}${s.pos ? ' ' + s.pos : ''}`.trim(),
+      );
+    }
+  }
+}
+
 /** Parse `*.slaide.yaml` master text into a Master object (inverse of serializeMaster). */
 export function parseMaster(text: string): Master {
   const obj = yaml.load(text);
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     throw new Error('Master YAML is not a valid mapping');
   }
+  normalizeBgs(obj as Record<string, any>);
   return obj as Master;
 }

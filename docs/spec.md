@@ -40,22 +40,37 @@ My Talk
 | Key | Values | Meaning |
 |---|---|---|
 | `layout` | a master layout name | Which grid to use. |
-| `transition` | `none`,`fade`,`slide-left/right/up/down`,`zoom`,`morph` | Transition **into** this slide. |
+| `transition` | a transition name (§3.1) | Transition **into** this slide. |
+| `transition-ms` | milliseconds | Duration override for this slide's transition. |
+| `transition-ease` | a CSS easing | Easing override (`ease`, `cubic-bezier(…)`). |
 | `background` | a master background name | Override the layout's background. |
 | `variant` | a master variant name | Scoped token overrides (e.g. a light section). |
 | `morph` | an id | Participate in a shared-element morph. |
 | `footer` | inline Markdown | Per-slide footer; also `{{footer}}`. |
 | `chrome` | `both`,`header`,`footer`,`none`,`false` | Header/footer visibility this slide. |
 | `logo` | `false` | Hide the corner logo this slide. |
+| `notes` | inline Markdown | Speaker note for this slide (frontmatter form of a `???` line). |
 | *any other scalar* | — | Available as a `{{placeholder}}`. |
 
 **Cascade vs scope:** a bare key (`transition: zoom`) is this-slide-only; a `~`-prefixed key cascades to this slide and every later one until overridden (also valid in headmatter).
+
+### 3.1 Transition names
+
+`transition:` takes one of these built-ins; per-slide `transition-ms` / `transition-ease` override timing, and the master's `transitions: { default, duration }` sets the deck-wide default.
+
+| Group | Names |
+|---|---|
+| Fades | `none`, `fade`, `dissolve`, `fade-through-black` (alias `fade-black`) |
+| Slides | `slide-left` (alias `slide`), `slide-right`, `slide-up`, `slide-down` |
+| Push/cover | `push`, `cover`, `reveal` |
+| Scale/3-D | `zoom`, `zoom-out`, `flip` |
+| Shared-element | `morph` — pairs a `{#id}` image (or a `morph:` id) with the same id on the next slide |
 
 ## 4. Slide body
 
 - **Regions:** `:: name ::` on its own line routes following Markdown into slot `name`. Text before any marker → the main slot (`body`, else the first slot).
 - **Markdown:** standard CommonMark — headings, lists, **bold**, *italic*, `code`, fences, > quotes, links, tables, images. (A single newline is a space; blank line = new paragraph.)
-- **Builds `>>>`:** end an item/block with `>>>` to reveal it; steps auto-number in order, same step = simultaneous. PDF shows all.
+- **Builds `>>>`:** end an item/block with `>>>` to reveal it; steps auto-number in order, same step = simultaneous. PDF shows all. Add an entrance and timing after the sigil (§4.7).
 - **Notes `??? …`:** a `???` line (until a blank line) is a speaker note — presenter overlay only, hidden from audience and PDF.
 
 ### 4.1 Inline styled spans — `[text]{.class …}`
@@ -113,6 +128,17 @@ Both render to **theme-coloured inline SVG** (web/PDF/PNG/PPTX); `slaide build` 
 ### 4.6 Tables
 
 GFM pipe tables, styled by the master; use `[cell]{.class}` spans for emphasis.
+
+### 4.7 Build entrances — `>>> <entrance> [opts]`
+
+A bare `>>>` reveals with the default entrance (`fade-up`). Name an entrance right after the sigil, optionally with `delay=`, `dur=` and `ease=` (bare numbers are milliseconds): `- Big reveal >>> zoom-in delay=200 dur=600`. An unknown name warns (`unknown-entrance`) and falls back to the default. A master `animations:` block can define custom entrances too.
+
+| Group | Names |
+|---|---|
+| Fades | `fade`, `fade-up`, `fade-down`, `fade-left`, `fade-right`, `blur-in` |
+| Slides | `slide-in-left`, `slide-in-right`, `slide-in-up`, `slide-in-down`, `rise` |
+| Scale | `zoom-in`, `zoom-out`, `pop` |
+| Instant | `none` |
 
 ## 5. Layers
 
@@ -175,3 +201,33 @@ footer: A first deck
 ```
 
 See [themes.md](themes.md) to author a master.
+
+## 10. Diagnostics — what `validate` reports
+
+`slaide validate <deck>` prints line-numbered diagnostics; `--strict` makes every warning fail. **Errors** fail regardless of `--strict`; everything else is a **warning** (a real render defect even when the deck "looks valid"). Every code:
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `parse-error` | error | The source could not be parsed at all. |
+| `empty-deck` | error | No slides were found. |
+| `no-master` | error | The deck's `master:` could not be resolved. |
+| `unknown-layout` | error | A slide's `layout:` names no layout in the master. |
+| `no-headmatter` | warning | No leading `---` deck headmatter block (e.g. `master:`). |
+| `bad-config` | warning | A headmatter/frontmatter block is not valid YAML (rendered with defaults). |
+| `ambiguous-frontmatter` | warning | A config-shaped **body** was eaten as frontmatter — escape the first line with `\` or add an explicit `---`. |
+| `unknown-transition` | warning | A `transition:` names no built-in transition (§3.1). |
+| `unknown-background` | warning | A `background:` names no master background. |
+| `unknown-variant` | warning | A `variant:` names no master variant. |
+| `unknown-slot` | warning | Content routed to a slot the chosen layout doesn't define (dropped silently). |
+| `unknown-class` | warning | An inline `[x]{.cls}` is not a size / `.bold` / `.muted` / `.grad` / master colour / CSS colour. |
+| `unknown-gradient` | warning | A `.grad-<name>` or slot `fill:` names no master gradient (text gets no fill — often invisible). |
+| `unknown-color` | warning | A slot `color:`/`box:` names no master role/palette or CSS colour (falls back to a literal, often invisible). |
+| `unknown-entrance` | warning | A `>>> <name>` build entrance isn't a known effect (§4.7). |
+| `stray-build` | warning | A `>>>` on a non-list line (headings, bold labels, paragraphs). |
+| `low-contrast` | warning | Resolved text ≈ its background (dark-on-dark / light-on-light) — bind a `variant:` or set an explicit `color:`. |
+| `bad-chart` | warning | An ````echart` option didn't parse — rendered as a plain code block instead. |
+| `bad-animation` | warning | A master `animations:` entry is missing its required keyframes/`hidden` state. |
+| `unknown-token` | warning | A master token reference names nothing. |
+| `token-cycle` | warning | A master token references itself in a cycle. |
+| `non-embeddable-font` | warning | A font won't embed in `.pptx` — PowerPoint will substitute it. |
+| `unknown-placeholder` | warning | A `{{name}}` resolves to nothing (renders empty). |

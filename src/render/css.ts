@@ -13,14 +13,14 @@ const STATIC_CSS = `
 *,*::before,*::after{box-sizing:border-box;}
 html,body{margin:0;height:100%;}
 body{
-  background:#0a0a0e;
+  background:var(--sl-stage-bg,#0a0a0e);
   font-family:var(--font-sans, system-ui, sans-serif);
   color:var(--color-text,#eee);
   overflow:hidden;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
-.sl-viewport{position:fixed;inset:0;overflow:hidden;background:#0a0a0e;}
+.sl-viewport{position:fixed;inset:0;overflow:hidden;background:var(--sl-stage-bg,#0a0a0e);}
 
 /* thin, unobtrusive scrollbars wherever the deck scrolls (notes, code, help) */
 *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;}
@@ -167,7 +167,10 @@ body{
   background:rgba(0,0,0,.3);color:#fff;opacity:.26;cursor:pointer;font:16px/1 var(--font-sans,system-ui);
   display:grid;place-items:center;backdrop-filter:blur(6px);transition:opacity .2s;}
 .sl-present-toggle:hover{opacity:.85;}
-body.sl-presenting .sl-present-toggle,body.sl-presenting .sl-counter{opacity:0;pointer-events:none;}
+body.sl-presenting .sl-present-toggle,body.slv-presenting .sl-present-toggle,
+body.sl-presenting .sl-counter,body.slv-presenting .sl-counter,
+body.sl-presenting .sl-progress,body.slv-presenting .sl-progress{opacity:0;pointer-events:none;}
+body.sl-presenting .sl-stage,body.slv-presenting .sl-stage{box-shadow:none;}
 @media print{.sl-present-toggle{display:none;}}
 
 /* ---- builds + transitions live in anim.ts (appended to BASE_CSS below) ---- */
@@ -176,7 +179,7 @@ body.sl-presenting .sl-present-toggle,body.sl-presenting .sl-counter{opacity:0;p
 .sl-progress{position:fixed;left:0;bottom:0;height:3px;background:var(--color-accent,#6cf);width:0;z-index:50;transition:width .3s ease;}
 .sl-counter{position:fixed;right:14px;bottom:12px;font:600 13px/1 var(--font-sans,system-ui);color:#fff;opacity:.35;z-index:50;background:rgba(0,0,0,.3);padding:5px 9px;border-radius:20px;backdrop-filter:blur(6px);}
 .sl-counter:hover{opacity:.8;}
-.sl-notes{position:fixed;left:0;right:0;bottom:0;max-height:38vh;overflow:auto;background:rgba(10,10,16,.94);color:#ddd;padding:16px 22px;font:15px/1.6 var(--font-sans,system-ui);z-index:60;border-top:2px solid var(--color-accent,#6cf);display:none;}
+.sl-notes{position:fixed;left:var(--sl-dock-left,0px);right:var(--sl-dock-right,0px);bottom:var(--sl-dock-bottom,0px);height:180px;overflow:auto;background:rgba(10,10,16,.94);color:#ddd;padding:16px 22px;font:15px/1.6 var(--font-sans,system-ui);z-index:60;border-top:2px solid var(--color-accent,#6cf);display:none;box-sizing:border-box;}
 .sl-notes.sl-open{display:block;}
 .sl-help{position:fixed;inset:0;display:none;place-items:center;background:rgba(5,5,10,.82);z-index:70;}
 .sl-help.sl-open{display:grid;}

@@ -16,7 +16,7 @@ Run as `npx @aivorynet/slaide <cmd>` (or `npm run slaide -- <cmd>` where a scrip
 
 ## Workflow
 1. **Brand first — check, then ask.** Scan the project/context for brand assets: colours, fonts, a logo, an existing `*.slaide.yaml` master, a brand doc. Found a master → use it. Found brand → build the master around it. Found nothing → **ask** the user: brand colours? logo? an existing theme, or author one from scratch? Prefer authoring a **new master** over copying an example.
-2. **Read** `reference.md` (language) and `themes.md` (the master format + footguns) before authoring a master. Worked example decks: https://github.com/aivorynet/slaide/tree/main/examples
+2. **Read** `reference.md` (language) and `themes.md` (the master format + footguns) before authoring a master; `grammar.md` is the precise formal reference (frontmatter detection, attribute braces, transitions/entrances, master value forms) when you need it. Worked example decks: https://github.com/aivorynet/slaide/tree/main/examples
 3. **`slaide slots <deck>`** — prints the master's real layouts, slots, colours, gradients, sizes, transitions. Reference these **by name**. (Run on the deck, not the master.)
 4. **Write** the `.slaide` — and the master, if authoring one.
 5. **`slaide validate <deck> --strict`** — a **gate**: must be clean. Every `unknown-*` / `low-contrast` / `non-embeddable-font` means something renders wrong even when it "looks valid".

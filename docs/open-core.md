@@ -33,14 +33,26 @@ Two capabilities, unlocked by a license:
 
 ## How it fits together (and why your clone has no paid code)
 
-The open engine renders a present-only deck. It exposes two inert seams, a render extension
-point (`src/render/inject.ts`) and an import rasterizer (`src/import/raster-extension.ts`).
-They do nothing until a host registers something. The open build registers nothing.
+There are two runtimes behind one experience. The **render runtime** — the open engine plus the
+native viewer chrome — renders a present-only deck and is what ships publicly (npm and the GitHub
+Release). The **editor runtime** — the Pro engine on the desktop, and the hosted engine-server in
+the cloud product — is the same render runtime plus the licensed editor, and is never published
+here. The open engine exposes two inert seams, a render extension point (`src/render/inject.ts`)
+and an import rasterizer (`src/import/raster-extension.ts`). They do nothing until a host registers
+something. The open build registers nothing.
 
-The official prebuilt binary (what `getslaide.com/install.sh` fetches) is compiled from a
-private superset that registers the editor and the COM rasterizer, but only when a valid
-license is present. With no license it behaves identically to the open viewer in this repo.
-One binary serves everyone. The license is the only difference.
+The official prebuilt binary (the GitHub Release on this repo, which `slaide app`/`slaide
+upgrade` from the npm CLI, the standalone installers, and the viewer's own Sign-in all fetch)
+is compiled from a private superset that registers the editor and the COM rasterizer, but only
+when a valid license is present. With no license it behaves identically to
+the open viewer built from this repo. One binary serves everyone. The license is the only
+difference.
+
+The open viewer reaches that same superset on demand: clicking **Sign in** downloads the
+prebuilt Pro engine and swaps it in (verified by checksum + signature), then signs in against
+it. So the app you download becomes editing-capable once you sign in with a license — you do
+not need a different download. The Pro engine is fetched as a prebuilt binary, never built from
+this repo.
 
 The Pro source (the editor, the COM importer, the license check) lives in a private repository
 and is never published here. That is the structural guarantee: a clone of this repo cannot

@@ -41,7 +41,9 @@ function deriveCanvas(master: Master): { width: number; height: number; aspect: 
 const VALIGN: Record<string, string> = { top: 'start', center: 'center', bottom: 'end' };
 const JUSTIFY: Record<string, string> = { left: 'start', center: 'center', right: 'end' };
 
-const STYLE_MAP: Record<string, (v: string) => [string, string]> = {
+// Exported as the canonical slot style-key set (see src/vocab.ts); `anchor` and `box`
+// are handled before this map and added to the vocab list there.
+export const STYLE_MAP: Record<string, (v: string) => [string, string]> = {
   font: (v) => ['font-family', `var(--font-${v})`],
   bg: (v) => ['background', v],
   size: (v) => ['font-size', v.match(/[\d]/) && /(px|em|rem|%|vw|vh)$/.test(v) ? v : `var(--size-${v})`],

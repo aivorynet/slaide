@@ -4,11 +4,12 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import yaml from 'js-yaml';
 import { parseDeck } from './parser/parse.js';
 import { compile } from './compiler/compile.js';
 import { renderHtml, type RenderOptions } from './render/html.js';
 import { isSlaidec } from './container.js';
+import { ERROR_SEVERITY_CODES } from './vocab.js';
+import { parseMaster } from './master-io.js';
 import type { DeckIR, Master, Warning } from './types.js';
 
 /** Path-based APIs read real files; a `.slaidec` must be resolved via openDeck() first. */
@@ -41,9 +42,7 @@ function moduleDir(): string {
 
 export function loadMaster(path: string): Master {
   const raw = readFileSync(path, 'utf8');
-  const obj = yaml.load(raw);
-  if (!obj || typeof obj !== 'object') throw new Error(`Master ${path} is not a valid YAML mapping`);
-  return obj as Master;
+  return parseMaster(raw);
 }
 
 /** Resolve the master path referenced in deck headmatter, with a bundled default. */
@@ -89,8 +88,6 @@ export interface Diagnostic extends Warning {
   severity: 'error' | 'warning';
 }
 
-const ERROR_CODES = new Set(['empty-deck', 'no-master', 'unknown-layout']);
-
 export function validateSource(source: string, deckDir: string): { ok: boolean; diagnostics: Diagnostic[] } {
   let warnings: Warning[] = [];
   try {
@@ -101,7 +98,7 @@ export function validateSource(source: string, deckDir: string): { ok: boolean; 
   }
   const diagnostics: Diagnostic[] = warnings.map((w) => ({
     ...w,
-    severity: ERROR_CODES.has(w.code) ? 'error' : 'warning',
+    severity: ERROR_SEVERITY_CODES.has(w.code) ? 'error' : 'warning',
   }));
   return { ok: !diagnostics.some((d) => d.severity === 'error'), diagnostics };
 }

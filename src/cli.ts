@@ -4,6 +4,7 @@
 // CLI — thin wrapper over @aivorynet/slaide.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve, join, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import {
@@ -39,6 +40,16 @@ function deckStem(p: string): string {
   return basename(p).replace(/\.(slaidec|slaide)$/i, '');
 }
 
+/** The package version, read at runtime (dist/cli.js → ../package.json; src/cli.ts → ../package.json). */
+function pkgVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    return JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')).version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 const COLORS = { red: '\x1b[31m', yellow: '\x1b[33m', green: '\x1b[32m', dim: '\x1b[2m', reset: '\x1b[0m', bold: '\x1b[1m' };
 function printDiagnostics(diags: { severity: string; code: string; message: string; line?: number }[]): void {
   for (const d of diags) {
@@ -55,7 +66,9 @@ Usage:
   slaide build <deck.slaide> [--out <dir>] [--quality <1-100>] [--max-width <px>] [--no-bake]
                                                  Self-contained HTML; charts baked to SVG (no engine dep); optional image shrink
   slaide render <deck.slaide> [--print --meta]  Print self-contained HTML to stdout (for the viewer)
-  slaide view <deck.slaide>                    Open the deck in your default browser
+  slaide view <deck.slaide>                    Open the deck in your default browser (no install)
+  slaide app [deck.slaide]                      Open in the native viewer/editor (fetches it on first use)
+                                               (--install: set up without launching; --register; --uninstall)
   slaide export <deck.slaide> [--pdf <file>]   Export to PDF (needs Playwright)
   slaide export <deck.slaide> --pptx [<file>]  Export to editable PowerPoint (needs Playwright)
                                                (--no-embed-fonts: skip font embedding; --no-builds: skip animations)
@@ -77,9 +90,12 @@ Usage:
   slaide unpack <file.slaidec> [-o <dir>]      Extract a .slaidec back to an editable folder
   slaide themes                                 List bundled themes & layouts
   slaide mcp                                    Run the MCP server (stdio)
+  slaide upgrade                                Update the native viewer/engine to the latest release
+  slaide auth <login|logout|status>             Sign in to Slaide Pro (unlocks in-place editing)
   slaide install [--cli <id,…>] [--scope project|global|<dir>] [--skills] [--no-mcp] [--yes] [--list]
-                                                 Detect installed AI coding CLIs and install the slaide skill (+ MCP server)
-  slaide --help`);
+                                                 Install the slaide skill (+ MCP server) into your AI coding CLIs
+                                                 (note: this installs the AGENT skill — for the desktop app use \`slaide app\`)
+  slaide --help                                 (--version for the version)`);
 }
 
 async function main(): Promise<void> {
@@ -363,6 +379,46 @@ async function main(): Promise<void> {
       if (customT.length || customE.length) console.log(dim('  * = master-defined custom animation'));
       break;
     }
+    case 'app': {
+      // Open the deck in the native desktop viewer, fetching + verifying it on first use.
+      // --install: download/register without launching; --register/--uninstall: file-type assoc.
+      const { ensureInstalled, installBinaries, launchApp, uninstall } = await import('./desktop/bootstrap.js');
+      const opts = { yes: has('--yes') || has('-y'), force: has('--force') };
+      if (has('--uninstall')) {
+        uninstall();
+        console.log(`${COLORS.green}✓${COLORS.reset} Removed the installed Slaide app binaries.`);
+        break;
+      }
+      if (has('--register')) {
+        await ensureInstalled(opts);
+        const { detectPlatform, viewerExe } = await import('./desktop/paths.js');
+        const { spawnSync } = await import('node:child_process');
+        spawnSync(viewerExe(detectPlatform()), ['--register'], { stdio: 'ignore' });
+        console.log(`${COLORS.green}✓${COLORS.reset} Registered the .slaide file type.`);
+        break;
+      }
+      if (has('--install')) {
+        await installBinaries(opts);
+        break;
+      }
+      await launchApp(positional(1), opts);
+      break;
+    }
+    case 'upgrade': {
+      // Re-fetch the latest native viewer + engine in place.
+      const { installBinaries } = await import('./desktop/bootstrap.js');
+      await installBinaries({ yes: true, force: true });
+      break;
+    }
+    case 'auth': {
+      // Sign in / out of Slaide Pro through the engine (upgrades the OSS engine to Pro on login).
+      const sub = positional(1) ?? 'status';
+      if (!['login', 'logout', 'status'].includes(sub)) return fail('auth needs login | logout | status');
+      const { runAuth } = await import('./desktop/bootstrap.js');
+      const code = await runAuth(sub, { yes: has('--yes') || has('-y') });
+      if (code) process.exit(code);
+      break;
+    }
     case 'mcp': {
       const { runStdio } = await import('./mcp/server.js');
       await runStdio();
@@ -400,7 +456,8 @@ async function main(): Promise<void> {
       help();
       break;
     case '--version':
-      console.log('0.1.0');
+    case '-v':
+      console.log(pkgVersion());
       break;
     default:
       fail(`unknown command "${cmd}"`);
@@ -419,7 +476,13 @@ function fail(msg: string): void {
   process.exit(1);
 }
 
-main().catch((e) => {
-  console.error(`${COLORS.red}error:${COLORS.reset} ${(e as Error).message}`);
-  process.exit(1);
-});
+main()
+  .then(async () => {
+    // Best-effort, once-a-day npm update notice (silent on machine/piped output). Never throws.
+    const { maybeNotifyUpdate } = await import('./update.js');
+    await maybeNotifyUpdate(pkgVersion(), cmd);
+  })
+  .catch((e) => {
+    console.error(`${COLORS.red}error:${COLORS.reset} ${(e as Error).message}`);
+    process.exit(1);
+  });
