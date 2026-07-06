@@ -1,16 +1,14 @@
 name: Release
 
 # On a version tag (the GitLab mirror pushes `v*` here), this:
-#   1. builds the native viewer + lean engine on Linux, macOS, Windows as a cross-platform
-#      compile smoke test (the artifacts are not shipped);
-#   2. publishes the `@aivorynet/slaide` package to npm with provenance.
-# Run it manually (workflow_dispatch) to test the build; manual runs skip npm.
-#
-# The GitHub *Release* (the downloadable binaries) is published by the private build pipeline,
-# which produces the official Pro-capable, signed binaries — see the monorepo's .gitlab-ci.yml
-# `publish:dist` job. This workflow intentionally does NOT create a release (no collision).
-#
-# OIDC trusted publishing handles npm auth (no NPM_TOKEN needed).
+#   1. builds the native viewer + engine on Linux, macOS and Windows and PUBLISHES them as the
+#      GitHub Release assets that `slaide app` fetches from `releases/latest/download`:
+#        slaide-<os>-<arch>.<ext>            full bundle, flat: slaide-view, slaide-engine, themes
+#        slaide-engine-<os>-<arch>[.exe].gz  standalone engine (the viewer's Sign-in self-upgrade)
+#      each with a `.sha256`. These are the OSS binaries (no code signature) — the installer always
+#      verifies the checksum and, with no `.minisig` attached, falls back to checksum-only (verify.ts).
+#   2. publishes the `@aivorynet/slaide` package to npm with provenance (OIDC — no token needed).
+# Run it manually (workflow_dispatch) to smoke-test the build; manual runs skip the release + npm.
 
 on:
   push:
@@ -50,40 +48,67 @@ jobs:
       - name: Build engine + viewer
         run: npm run build:viewer
 
-      - name: Package
+      - name: Package release assets
         shell: bash
         run: |
           set -e
-          mkdir -p out/slaide
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp viewer/target/release/slaide-view.exe out/slaide/
-            cp viewer/vendor/slaide-engine.exe out/slaide/ 2>/dev/null || cp viewer/vendor/slaide-engine out/slaide/slaide-engine.exe
-          else
-            cp viewer/target/release/slaide-view out/slaide/
-            cp viewer/vendor/slaide-engine out/slaide/
-          fi
-          cp -r themes out/slaide/
-          cp LICENSE README.md out/slaide/ 2>/dev/null || true
-          cd out
-          if [ "${{ matrix.archive }}" = "zip" ]; then
-            7z a "slaide-${{ matrix.target }}.zip" slaide >/dev/null
-          else
-            tar czf "slaide-${{ matrix.target }}.tar.gz" slaide
-          fi
-          if command -v sha256sum >/dev/null; then
-            sha256sum slaide-${{ matrix.target }}.* > "slaide-${{ matrix.target }}.sha256"
-          else
-            shasum -a 256 slaide-${{ matrix.target }}.* > "slaide-${{ matrix.target }}.sha256"
-          fi
+          target="${{ matrix.target }}"
+          ext="${{ matrix.archive }}"
+          root="$PWD"
+          mkdir -p "$root/out"
+          stage="$root/stage"; rm -rf "$stage"; mkdir -p "$stage"
+          if [ "${{ runner.os }}" = "Windows" ]; then exe=".exe"; else exe=""; fi
+
+          # Stage binaries + themes FLAT — the installer extracts them straight into ~/.slaide/bin.
+          cp "viewer/target/release/slaide-view$exe" "$stage/"
+          cp "viewer/vendor/slaide-engine$exe" "$stage/" 2>/dev/null || cp "viewer/vendor/slaide-engine" "$stage/slaide-engine$exe"
+          cp -r themes "$stage/"
+          cp LICENSE README.md "$stage/" 2>/dev/null || true
+
+          # Full bundle: members at the archive ROOT (flat), matching bundleAsset() in paths.ts.
+          bundle="slaide-$target.$ext"
+          ( cd "$stage" && if [ "$ext" = "zip" ]; then 7z a -bso0 "$root/out/$bundle" ./*; else tar czf "$root/out/$bundle" ./*; fi )
+
+          # Standalone gzipped engine — what the viewer fetches on Sign-in to self-upgrade.
+          gzip -9 -c "$stage/slaide-engine$exe" > "$root/out/slaide-engine-$target$exe.gz"
+
+          # Checksums, named EXACTLY <asset>.sha256 — verifyAsset() fetches `${asset}.sha256`.
+          cd "$root/out"
+          sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" > "$1.sha256"; else shasum -a 256 "$1" > "$1.sha256"; fi; }
+          sha "$bundle"
+          sha "slaide-engine-$target$exe.gz"
 
       - uses: actions/upload-artifact@v4
         with:
           name: slaide-${{ matrix.target }}
-          path: out/slaide-${{ matrix.target }}.*
+          path: out/*
 
-  # The official, signed, Pro-capable GitHub Release is published by the private .gitlab-ci.yml
-  # `publish:dist` job (it has the closed `pro/` sources + the signing key). This workflow only
-  # smoke-builds the OSS tree and publishes the npm package.
+  # Attach the built OSS binaries to the GitHub Release for the tag so `slaide app` (and the
+  # standalone-engine self-upgrade) can fetch them. The private .gitlab-ci.yml `publish:dist` job
+  # can still re-publish the official *signed*, Pro-capable binaries over these when it runs.
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create or update the release + upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" dist/* --repo "$GITHUB_REPOSITORY" --title "Slaide $tag" --generate-notes
+          fi
 
   publish-npm:
     name: Publish to npm
