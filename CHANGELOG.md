@@ -6,6 +6,19 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-07-08
+
+### Fixed
+
+- Chart font family now resolves from the slide element when the CSS variable is empty, instead of falling back to a blank string.
+- Chrome logo in the agent skill is opt-in, no longer injected by default.
+
+### Changed
+
+- Runtime navigation queue and rescan API for smoother slide transitions.
+- Themes skill rewritten for leaner, more reliable authoring guidance.
+- GitHub Actions release workflow now publishes the OSS viewer binaries.
+
 ## [1.0.4] - 2026-07-06
 
 ### Changed
@@ -66,7 +79,8 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/aivorynet/slaide/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/aivorynet/slaide/releases/tag/v1.0.4
 [1.0.3]: https://github.com/aivorynet/slaide/releases/tag/v1.0.3
 [1.0.2]: https://github.com/aivorynet/slaide/releases/tag/v1.0.2

@@ -3,9 +3,12 @@
 // Generate the skill's bundled reference docs from the canonical docs/ source,
 // so there is exactly one definition of the slaide language (no drift).
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getSpec, getThemeSchema, getGrammar } from '../../src/assets.js';
 
-const SKILL = 'skills/slaide';
+const CORE = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const SKILL = join(CORE, 'skills/slaide');
 mkdirSync(SKILL, { recursive: true });
 
 writeFileSync(`${SKILL}/reference.md`, getSpec(), 'utf8');

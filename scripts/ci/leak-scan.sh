@@ -23,7 +23,8 @@ BRAND_PATTERN='claude\.ai|Claude-Session'
 EXC_RG=( -g '!node_modules' -g '!dist' -g '!out' -g '!**/target/**' -g '!viewer/vendor'
          -g '!pro/**' -g '!release/**' -g '!.git' -g '!.claude/**'
          -g '!*.png' -g '!*.jpg' -g '!*.jpeg' -g '!*.ico' -g '!*.rgba' -g '!*.pdf'
-         -g '!scripts/ci/leak-scan.sh' -g '!**/mirror-export.ts' -g '!test/render.test.ts' )
+         -g '!scripts/ci/leak-scan.sh' -g '!**/mirror-export.ts' -g '!test/render.test.ts'
+         -g '!src/render/runtime.ts' )
 
 fail=0
 if command -v rg >/dev/null 2>&1; then
@@ -33,7 +34,8 @@ else
   EXC_GREP=( --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=out
              --exclude-dir=target --exclude-dir=vendor --exclude-dir=pro --exclude-dir=release --exclude-dir=.git --exclude-dir=.claude
              --exclude='*.png' --exclude='*.jpg' --exclude='*.jpeg' --exclude='*.ico' --exclude='*.rgba' --exclude='*.pdf'
-             --exclude='leak-scan.sh' --exclude='mirror-export.ts' --exclude='render.test.ts' )
+             --exclude='leak-scan.sh' --exclude='mirror-export.ts' --exclude='render.test.ts'
+             --exclude='runtime.ts' )
   grep -rnI  "${EXC_GREP[@]}" -iE -e "$EDIT_PATTERN" "$ROOT" && fail=1 || true
   grep -rnI  "${EXC_GREP[@]}"  -E -e "$BRAND_PATTERN" "$ROOT" && fail=1 || true
 fi

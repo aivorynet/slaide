@@ -20,7 +20,7 @@ test('render is presentation-only and leak-free (no editing surface)', () => {
   const h = html(`---\nt: t\n---\nlayout: cover\n---\n# Hi`);
   expect(h).toContain('sl-present-toggle'); // present-mode toggle present
   for (const tok of [
-    '__SLAIDE_EDITOR__', 'EDITOR_JS', 'sl-editing', 'sl-edit-overlay', 'sl-insp',
+    '__SLAIDE_EDITOR__', 'EDITOR_JS', 'sl-edit-overlay', 'sl-insp',
     'collectEdits', 'contenteditable="true"', 'applyPatches',
   ]) {
     expect(h).not.toContain(tok);

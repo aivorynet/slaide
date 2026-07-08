@@ -37,13 +37,17 @@ export const CHARTS_BOOT_JS = String.raw`
   // deck's CSS custom properties so charts come out on-brand automatically.
   function ensure(engine){
     if(booted[engine]) return booted[engine];
-    var tag = document.getElementById('sl-'+engine+'-lib');
-    if(!tag) return null;
-    try{ (0,eval)(b64decode(tag.textContent)); }
-    catch(e){ console.error('slaide: failed to boot '+engine, e); return null; }
+    var global = engine==='echart' ? window.echarts : engine==='mermaid' ? window.mermaid : null;
+    if(!global){
+      var tag = document.getElementById('sl-'+engine+'-lib');
+      if(!tag) return null;
+      try{ (0,eval)(b64decode(tag.textContent)); }
+      catch(e){ console.error('slaide: failed to boot '+engine, e); return null; }
+    }
 
     if(engine==='mermaid' && window.mermaid){
-      var font = cssVar('--font-sans','system-ui');
+      var mSlide = document.querySelector('.sl-slide');
+      var font = cssVar('--font-sans','') || (mSlide ? getComputedStyle(mSlide).fontFamily : '') || 'system-ui, sans-serif';
       window.mermaid.initialize({
         startOnLoad:false, securityLevel:'strict', theme:'base', fontFamily:font,
         themeVariables:{
@@ -67,7 +71,8 @@ export const CHARTS_BOOT_JS = String.raw`
       if(accent && colors.indexOf(accent)<0) colors = [accent].concat(colors);
       var text = cssVar('--color-text','#ffffff');
       var muted = cssVar('--color-muted','#8B93A7');
-      var font = cssVar('--font-sans','system-ui');
+      var slideEl = document.querySelector('.sl-slide');
+      var font = cssVar('--font-sans','') || (slideEl ? getComputedStyle(slideEl).fontFamily : '') || 'system-ui, sans-serif';
       var axis = {
         axisLine:{lineStyle:{color:muted}},
         axisTick:{lineStyle:{color:muted}},

@@ -1,6 +1,6 @@
 {
   "name": "@aivorynet/slaide",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "An AI-authorable slide language with beautiful web + PDF output",
   "type": "module",
   "license": "Apache-2.0",

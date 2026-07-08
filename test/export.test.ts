@@ -102,7 +102,9 @@ describe('zip injection', () => {
 // ---- full export e2e (gated on Playwright; Chromium is installed here) -------
 const hasPlaywright = await (async () => {
   try {
-    await import('playwright');
+    const pw = await import('playwright');
+    const browser = await pw.chromium.launch();
+    await browser.close();
     return true;
   } catch {
     return false;

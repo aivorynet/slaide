@@ -7,10 +7,12 @@ export const RUNTIME_JS = String.raw`
   var stage = document.querySelector('.sl-stage');
   if(!stage) return;
   var vp = document.querySelector('.sl-viewport');
-  var slides = Array.prototype.slice.call(document.querySelectorAll('.sl-slide'));
+  // Scope to the stage: a host (web editor) may clone .sl-slide into a filmstrip elsewhere in the
+  // document; collecting from the whole document would pollute the count/index and navigation.
+  var slides = Array.prototype.slice.call(stage.querySelectorAll('.sl-slide'));
   var CW = parseFloat(stage.dataset.w)||1280, CH = parseFloat(stage.dataset.h)||720;
   var notes = (window.__SLAIDE_NOTES__)||[];
-  var cur = 0, step = 0, busy = false;
+  var cur = 0, step = 0, busy = false, pendingNav = null;
   var zoomFactor = 1, panX = 0, panY = 0;
   // When false, taps don't advance and drag-pan is off (for interactive embeds,
   // kiosk mode, or a host that drives navigation itself). Default: on.
@@ -118,24 +120,28 @@ export const RUNTIME_JS = String.raw`
     if(dir<0){ newSlide.classList.add('sl-anim-rev'); oldSlide.classList.add('sl-anim-rev'); }
     step = dir<0 ? buildCount(i) : 0; applyBuilds(newSlide, step);
     var done=0;
-    function endOld(){ oldSlide.classList.remove('sl-active', outC, 'sl-anim-rev'); oldSlide.removeEventListener('animationend', endOld); next(); }
-    function endNew(){ newSlide.classList.remove(inC, 'sl-anim-rev'); newSlide.removeEventListener('animationend', endNew); next(); }
-    function next(){ if(++done>=2){ busy=false; } }
+    function endOld(){ if(done&1) return; done|=1; oldSlide.classList.remove('sl-active', outC, 'sl-anim-rev'); oldSlide.removeEventListener('animationend', endOld); fin(); }
+    function endNew(){ if(done&2) return; done|=2; newSlide.classList.remove(inC, 'sl-anim-rev'); newSlide.removeEventListener('animationend', endNew); fin(); }
+    function fin(){ if((done&3)===3){ busy=false; if(pendingNav){ var p=pendingNav; pendingNav=null; if(p==='fwd') forward(); else backward(); } } }
     oldSlide.addEventListener('animationend', endOld);
     newSlide.addEventListener('animationend', endNew);
-    // safety timeout
-    setTimeout(function(){ if(busy){ oldSlide.classList.remove('sl-active',outC,'sl-anim-rev'); newSlide.classList.remove(inC,'sl-anim-rev'); busy=false; } }, 1200);
+    requestAnimationFrame(function(){
+      var cs1=getComputedStyle(oldSlide),cs2=getComputedStyle(newSlide);
+      if(!cs1.animationName||cs1.animationName==='none'||cs1.animationDuration==='0s') endOld();
+      if(!cs2.animationName||cs2.animationName==='none'||cs2.animationDuration==='0s') endNew();
+    });
+    setTimeout(function(){ if(busy){ endOld(); endNew(); } }, 800);
     cur=i; updateChrome(); sync();
   }
 
   function forward(){
-    if(busy) return;
+    if(busy){ pendingNav='fwd'; return; }
     if(blanked) blank('');
     if(step < buildCount(cur)){ step++; applyBuilds(slides[cur], step); updateChrome(); sync(); return; }
     goTo(cur+1, 1);
   }
   function backward(){
-    if(busy) return;
+    if(busy){ pendingNav='bwd'; return; }
     if(blanked) blank('');
     if(step > 0){ step--; applyBuilds(slides[cur], step); updateChrome(); sync(); return; }
     goTo(cur-1, -1);
@@ -384,7 +390,20 @@ export const RUNTIME_JS = String.raw`
     prev: backward,
     goTo: function(i){ goTo(i, i>cur?1:-1); },
     relayout: function(){ scale(); }, // recompute the stage fit (e.g. after the dock opens/closes)
-    show: function(i){ if(i<0||i>=slides.length) return; activate(i, true); cur=i; updateChrome(); },
+    show: function(i){ if(!slides.length) return; i=Math.max(0,Math.min(slides.length-1,i)); activate(i, true); cur=i; updateChrome(); },
+    // Re-collect slides after the host appended/replaced .sl-slide nodes in the stage (live agent
+    // build: new slides stream in one by one). Preserve the current index; re-assert active + builds
+    // + chrome. Returns the new slide count.
+    rescan: function(){
+      slides = Array.prototype.slice.call(stage.querySelectorAll(':scope > .sl-slide'));
+      if(!slides.length) return 0;
+      cur = Math.max(0, Math.min(cur, slides.length-1));
+      slides.forEach(function(s,idx){ s.classList.toggle('sl-active', idx===cur); });
+      if(step > buildCount(cur)) step = buildCount(cur);
+      applyBuilds(slides[cur], step);
+      scale(); updateChrome();
+      return slides.length;
+    },
     setInteractive: function(on){ navEnabled = on!==false; },
     toggleNotes: function(){ toggleNotes(); },
     toggleHelp: function(){ toggle('.sl-help'); },
@@ -415,5 +434,6 @@ export const RUNTIME_JS = String.raw`
   scale(); updateChrome();
   if(AM_PRESENTER) buildPresenter();                        // this window is the presenter view
   if(AM_AUDIENCE){ document.body.classList.add('slv-presenting'); navEnabled = false; }  // clean mirror, host-driven
+  if(document.body.classList.contains('sl-editing')) navEnabled = false;
 })();
 `;
