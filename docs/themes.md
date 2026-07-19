@@ -7,6 +7,7 @@ A **master** is a YAML file defining the whole visual system as data, so one the
 ```yaml
 schema: slaide/1
 name: my-theme
+brand:     { name, palette, fonts, logo, source, locked }   # optional: locked brand identity
 canvas:    { aspect: "16:9", width: 1920, height: 1080 }   # fixed design space, scaled to fit
 fonts:     { … }          # named roles, auto-imported from Google
 typeScale: { … }          # named size steps
@@ -98,6 +99,17 @@ gradients:
   purple: "linear-gradient(120deg, #A855F7, #EC4899)"                         # .grad-purple
 ```
 
+## brand
+
+Optional. Names/locks the brand identity a deck is themed for — the master's own `colors:`/`fonts:` blocks **are** the brand, no separate copy here. When `locked: true`, a hosted AI edit treats the block as read-only and won't drift it — only the user changes it.
+
+```yaml
+brand:
+  name: "Acme"
+  logo: "<svg>…</svg>"   # inline mark, or an asset reference
+  locked: true
+```
+
 ## tokens
 
 Raw CSS custom-property overrides (spacing, chrome metrics, chart + code styling). Exact names below — a misspelling is silently ignored.
@@ -139,7 +151,7 @@ variants:
 
 ## chrome
 
-Header/footer bands + a corner logo on every slide (toggle per layout/slide). Band cells `left`/`center`/`right` may hold `{{placeholders}}`; `logo` is inline SVG (inherits text colour via `currentColor`); `logoPos` ∈ `top-left|top-right|bottom-left|bottom-right`.
+Header/footer bands + a corner logo on every slide (toggle per layout/slide). Band cells `left`/`center`/`right` may hold `{{placeholders}}`; `logo` is inline SVG (inherits text colour via `currentColor`); `logoPos` ∈ `top-left|top-right|bottom-left|bottom-right`. `logo`: may be raw markup (`<img>`/`<svg>`/text) or a bare image URL — a URL is auto-wrapped in `<img>`. `logo` may instead be `{ dark: <mark>, light: <mark> }` — picked per slide by its resolved ground (`dark` = the mark for a dark background, `light` = for a light one), so a light-on-dark wordmark never lands unreadable on a light slide; one key alone is used everywhere.
 
 ```yaml
 chrome:
@@ -151,13 +163,15 @@ chrome:
 
 Per layout: `chrome: header|footer|both|false` and `logo: false`; per-slide frontmatter overrides both. **A header/footer corner cell and the `logo` in the *same* corner overlap silently — put them in different corners.**
 
+**Cover and outro/closing slides carry no page number** — layouts named `cover`/`outro`/`closing`/`thanks`/`end` get their footer suppressed automatically unless the slide/layout sets `chrome:` explicitly. So a numbered footer never lands on the title or closing slide.
+
 ## ui
 
 `ui: { progress: true }` — web position bar + counter (default on; never affects PDF). Per-deck override: `progress: false` in headmatter.
 
 ## layouts
 
-Grid templates. `areas` = a `grid-template-areas` map (each entry = one row of space-separated slot names); `slots` = the typed regions content routes into. Optional `align: start|center|end` (vertical), `rows`, `cols`, `gap`, `padding`, `background`, `variant`. Keep `areas` rectangular; every slot in `slots` must appear in `areas`.
+Grid templates. `areas` = a `grid-template-areas` map (each entry = one row of space-separated slot names); `slots` = the typed regions content routes into. Optional `align: start|center|end` (vertical), `rows`, `cols`, `gap`, `padding`, `background`, `variant`. Keep `areas` rectangular; every slot in `slots` must appear in `areas` — a slot key missing from `areas` falls back to the same default cell as any other missing slot, so `validate` warns (`overlapping-slots`) when two or more do.
 
 ```yaml
 layouts:

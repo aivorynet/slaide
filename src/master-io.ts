@@ -17,6 +17,7 @@ const KEY_ORDER: readonly string[] = [
   'schema',
   'name',
   'description',
+  'brand',
   'canvas',
   'fonts',
   'typeScale',

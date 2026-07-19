@@ -133,12 +133,18 @@ function preprocessImages(src: string): string {
 //   size: .xs .sm .md .lg .xl .xxl .huge   .bold  .muted
 // Optional leading `\` escapes the whole construct to a literal.
 const SPAN_RE = /(\\?)\[([^\]]+)\]\{((?:\s*\.[\w#-]+)+\s*)\}/g;
+// Conservative lint for broken span syntax: a `[text]{` fragment that SPAN_RE didn't
+// consume (missing leading dot, empty/invalid class list, or an unmatched brace) is
+// left as literal text below — this scans for exactly that leftover shape. It never
+// fires on plain links `[text](url)` (a paren, not `{`, follows the `]`) or footnote-ish
+// `[1]` (no `{` follows at all), since both lack the `]{` adjacency this requires.
+const BROKEN_SPAN_RE = /\[[^\]\n]*\]\{[^}\n]*\}?/g;
 // Exported as the canonical span size-class map (see src/vocab.ts).
 export const SIZE_CLASS: Record<string, string> = {
   xs: 'small', sm: 'caption', md: 'h3', lg: 'h2', xl: 'h1', xxl: 'hero', huge: 'stat',
 };
 function preprocessSpans(src: string, tokens: Record<string, string> = {}, warnings?: Warning[], line?: number): string {
-  return src.replace(SPAN_RE, (_m, esc: string, text: string, clsStr: string) => {
+  const out = src.replace(SPAN_RE, (_m, esc: string, text: string, clsStr: string) => {
     if (esc) return `[${text}]{${clsStr}}`; // \[text]{.cls} → literal
     // tolerate either ".a.b" or ".a .b" between classes
     const classes = clsStr.split('.').map((s) => s.trim()).filter(Boolean);
@@ -168,6 +174,20 @@ function preprocessSpans(src: string, tokens: Record<string, string> = {}, warni
     if (grad) styles.push(`background-image:var(--gradient-${gradName})`);
     return `<span class="${cls}" style="${styles.join(';')}">${text}</span>`;
   });
+  if (warnings) {
+    // Strip every span SPAN_RE actually matched (real spans AND the `\[text]{.cls}`
+    // escaped-literal form — both are intentional, never a lint target) before
+    // scanning what's left for a dangling `]{` fragment.
+    const stripped = src.replace(SPAN_RE, '');
+    for (const m of stripped.matchAll(BROKEN_SPAN_RE)) {
+      warnings.push({
+        code: 'bad-span',
+        message: `malformed styled span: '${m[0]}' — expected '[text]{.class}' with a dot-prefixed class (e.g. '[text]{.accent}')`,
+        line,
+      });
+    }
+  }
+  return out;
 }
 
 // Raw inline SVG via a fenced ```svg block (themeable: can use currentColor / var()).
@@ -378,9 +398,9 @@ function entranceAttrs(
   }
   const styles: string[] = [];
   const o = spec.opts ?? {};
-  if (o.delay) styles.push(`--sl-ent-delay:${cssTime(o.delay)}`);
-  if (o.dur) styles.push(`--sl-ent-dur:${cssTime(o.dur)}`);
-  if (o.ease) styles.push(`--sl-ent-ease:${o.ease}`);
+  if (o.delay) styles.push(`--slaide--ent-delay:${cssTime(o.delay)}`);
+  if (o.dur) styles.push(`--slaide--ent-dur:${cssTime(o.dur)}`);
+  if (o.ease) styles.push(`--slaide--ent-ease:${o.ease}`);
   return { cls: ` sl-ent-${effect}`, style: styles.length ? ` style="${styles.join(';')}"` : '' };
 }
 

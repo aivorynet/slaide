@@ -3,6 +3,7 @@
 // Header / footer / logo chrome resolution + placeholder substitution.
 import { md } from './markdown.js';
 import type { ChromeDef, LayoutDef, Master, ResolvedChrome, Warning } from '../types.js';
+import { escapeHtml } from '../util.js';
 
 export type PlaceholderCtx = Record<string, string | number | null | undefined>;
 
@@ -33,22 +34,63 @@ function renderBand(
   return { left, center, right };
 }
 
+/** Cover and outro/closing slides carry no bottom page number by default (the footer band holds
+ *  it). Matches layout names like `cover`, `outro`, `closing`, `thanks`, `end`, `back-cover` —
+ *  an author can always opt back in with an explicit `chrome: footer|both` on the slide/layout. */
+export function isNumberlessLayout(name: string | undefined): boolean {
+  if (!name) return false;
+  return /(^|[-_ ])(cover|outro|closing|thanks?|thank-?you|end|finale)([-_ ]|$)/i.test(name);
+}
+
 /** mode: false|'none' → no chrome; 'header'|'footer' → one band; true|'both' → both. */
 function resolveMode(
   frontmatter: Record<string, unknown>,
   layout: LayoutDef,
   master: Master,
+  layoutName?: string,
 ): { header: boolean; footer: boolean; logo: boolean } {
-  const raw = (frontmatter.chrome as unknown) ?? layout.chrome ?? (master.chrome ? 'both' : 'none');
+  const explicit = (frontmatter.chrome as unknown) ?? layout.chrome;
+  const raw = explicit ?? (master.chrome ? 'both' : 'none');
   let header = false;
   let footer = false;
   if (raw === true || raw === 'both') header = footer = true;
   else if (raw === 'header') header = true;
   else if (raw === 'footer') footer = true;
   // false / 'none' → both stay false
+  // Safety net: cover/outro slides get no footer page-number unless chrome is set explicitly.
+  if (explicit === undefined && isNumberlessLayout(layoutName)) footer = false;
   const logoOff = frontmatter.logo === false || layout.logo === false;
   const logo = (header || footer || raw === 'logo') && !logoOff;
   return { header, footer, logo };
+}
+
+// `chrome.logo` is injected verbatim into the header (html.ts renderChrome) so an author
+// can hand-write an <img>/<svg> mark or a plain text wordmark. AI-authored masters
+// sometimes put a bare asset URL/path there instead — with no wrapping, that string
+// renders as literal on-slide text rather than an image. Anything containing markup
+// ('<') is assumed intentional and passes through unchanged; a bare URL/path (no
+// whitespace/quotes/angle brackets) is auto-wrapped into an <img>. Plain text (a brand
+// name) matches neither shape and is also left unchanged.
+const BARE_URL_RE = /^(https?:\/\/|\/)[^\s"'<>]+$/;
+
+function wrapLogo(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.includes('<')) return raw;
+  if (BARE_URL_RE.test(trimmed)) return `<img src="${escapeHtml(trimmed)}" alt="">`;
+  return raw;
+}
+
+/** Pick the mark for a `chrome.logo` that's a `{ dark, light }` pair, keyed by the slide's
+ *  resolved ground (`groundDark`, from the compiler's effective-background/variant
+ *  resolution — see compile.ts `slideGroundDark`). A lone string is used everywhere; given
+ *  only one key, that key is used everywhere too. `groundDark === null` (unknowable, e.g. a
+ *  photo background with no flat colour) prefers `light` — the more common default look. */
+function pickLogo(logo: ChromeDef['logo'], groundDark: boolean | null): string | undefined {
+  if (logo == null) return undefined;
+  if (typeof logo === 'string') return logo;
+  if (groundDark === true) return logo.dark ?? logo.light;
+  if (groundDark === false) return logo.light ?? logo.dark;
+  return logo.light ?? logo.dark;
 }
 
 export function resolveChrome(
@@ -57,15 +99,18 @@ export function resolveChrome(
   frontmatter: Record<string, unknown>,
   ctx: PlaceholderCtx,
   warnings: Warning[],
+  layoutName?: string,
+  groundDark: boolean | null = null,
 ): ResolvedChrome | null {
   const chrome: ChromeDef | undefined = master.chrome;
   if (!chrome) return null;
-  const mode = resolveMode(frontmatter, layout, master);
+  const mode = resolveMode(frontmatter, layout, master, layoutName);
   if (!mode.header && !mode.footer && !mode.logo) return null;
+  const logoRaw = mode.logo ? pickLogo(chrome.logo, groundDark) : undefined;
   return {
     header: mode.header ? renderBand(chrome.header, ctx, warnings) : null,
     footer: mode.footer ? renderBand(chrome.footer, ctx, warnings) : null,
-    logo: mode.logo && chrome.logo ? chrome.logo : null,
+    logo: logoRaw ? wrapLogo(logoRaw) : null,
     logoPos: chrome.logoPos ?? 'top-left',
   };
 }

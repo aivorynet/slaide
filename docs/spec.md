@@ -68,7 +68,7 @@ My Talk
 
 ## 4. Slide body
 
-- **Regions:** `:: name ::` on its own line routes following Markdown into slot `name`. Text before any marker → the main slot (`body`, else the first slot).
+- **Regions:** `:: name ::` on its own line routes following Markdown into slot `name`. Text before any marker → the main slot (`body`, else the first slot). A near-miss (`::` followed by content that isn't `:: name ::` alone on its line, e.g. `::name` or `:: name :: extra`) warns (`bad-region`) instead of silently rendering as literal text.
 - **Markdown:** standard CommonMark — headings, lists, **bold**, *italic*, `code`, fences, > quotes, links, tables, images. (A single newline is a space; blank line = new paragraph.)
 - **Builds `>>>`:** end an item/block with `>>>` to reveal it; steps auto-number in order, same step = simultaneous. PDF shows all. Add an entrance and timing after the sigil (§4.7).
 - **Notes `??? …`:** a `???` line (until a blank line) is a speaker note — presenter overlay only, hidden from audience and PDF.
@@ -88,7 +88,7 @@ Wrap inline text with one or more chainable dot-classes:
 | `.xs .sm .md .lg .xl .xxl .huge` | font size (type-scale steps small→…→stat) |
 | `.bold` / `.muted` | weight 800 / muted colour |
 
-An unknown class warns (`unknown-class`/`unknown-gradient`) — it never silently degrades. Resolved against the master (see [themes.md](themes.md#marks--utility-classes)).
+An unknown class warns (`unknown-class`/`unknown-gradient`) — it never silently degrades. Resolved against the master (see [themes.md](themes.md#marks--utility-classes)). A `{…}` that isn't a valid dot-class list (missing the leading dot, empty, or otherwise malformed) warns (`bad-span`) rather than showing the raw braces; plain links `[text](url)` and `[1]`-style refs are never affected.
 
 ### 4.2 Images — `![alt](src){ … }`
 
@@ -212,16 +212,20 @@ See [themes.md](themes.md) to author a master.
 | `empty-deck` | error | No slides were found. |
 | `no-master` | error | The deck's `master:` could not be resolved. |
 | `unknown-layout` | error | A slide's `layout:` names no layout in the master. |
+| `unknown-slot` | error | A `:: name ::` region names a slot the resolved layout (explicit `layout:` or the deck's default) doesn't define — the content is silently dropped. |
 | `no-headmatter` | warning | No leading `---` deck headmatter block (e.g. `master:`). |
 | `bad-config` | warning | A headmatter/frontmatter block is not valid YAML (rendered with defaults). |
 | `ambiguous-frontmatter` | warning | A config-shaped **body** was eaten as frontmatter — escape the first line with `\` or add an explicit `---`. |
+| `bad-region` | warning | A line starts `::` but isn't a well-formed `:: name ::` marker (alone on its line) — rendered as literal body text. |
 | `unknown-transition` | warning | A `transition:` names no built-in transition (§3.1). |
 | `unknown-background` | warning | A `background:` names no master background. |
 | `unknown-variant` | warning | A `variant:` names no master variant. |
-| `unknown-slot` | warning | Content routed to a slot the chosen layout doesn't define (dropped silently). |
+| `overlapping-slots` | warning | Two+ layout slots share one grid cell, or a slot's key is missing from `grid-template-areas` (default-stacks) — content renders on top of other content. |
 | `unknown-class` | warning | An inline `[x]{.cls}` is not a size / `.bold` / `.muted` / `.grad` / master colour / CSS colour. |
 | `unknown-gradient` | warning | A `.grad-<name>` or slot `fill:` names no master gradient (text gets no fill — often invisible). |
+| `bad-span` | warning | A `[text]{…}` brace isn't a valid dot-class list (missing dot, empty/invalid list, unmatched brace) — shown as literal text. |
 | `unknown-color` | warning | A slot `color:`/`box:` names no master role/palette or CSS colour (falls back to a literal, often invisible). |
+| `unknown-var` | warning | A raw `var(--X)` (e.g. in inline HTML) names no token the master defines — resolves to nothing, often rendering smaller/invisible. Auto-fixed to `var(--X, <fallback>)`. |
 | `unknown-entrance` | warning | A `>>> <name>` build entrance isn't a known effect (§4.7). |
 | `stray-build` | warning | A `>>>` on a non-list line (headings, bold labels, paragraphs). |
 | `low-contrast` | warning | Resolved text ≈ its background (dark-on-dark / light-on-light) — bind a `variant:` or set an explicit `color:`. |

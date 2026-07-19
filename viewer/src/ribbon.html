@@ -14,7 +14,7 @@
   --slv-line:rgba(21,18,14,.12);
   --slv-ink:#15120E;
   --slv-dim:#6B6358;
-  --slv-accent:var(--color-accent,#3E6FB0);
+  --slv-accent:#3E6FB0;                    /* app-chrome accent is FIXED — never inherit the deck's --color-accent */
   --slv-hover:rgba(21,18,14,.06);
   --slv-active:rgba(21,18,14,.10);
   --slv-soft:rgba(21,18,14,.05);
@@ -37,7 +37,7 @@ html[data-slv-theme="dark"] #slv-chat{
   --slv-line:rgba(255,255,255,.08);
   --slv-ink:#e7e9f2;
   --slv-dim:#9aa0b8;
-  --slv-accent:var(--color-accent,#6C8Cff);
+  --slv-accent:#6C8Cff;                    /* app-chrome accent is FIXED — never inherit the deck's --color-accent */
   --slv-hover:rgba(255,255,255,.09);
   --slv-active:rgba(255,255,255,.15);
   --slv-soft:rgba(255,255,255,.06);
@@ -127,9 +127,9 @@ body.slv-shown #slv-bar{ transform:none; }
 body.slv-presenting #slv-bar, body.slv-presenting #slv-thumbs, body.slv-presenting #slv-handle,
 body.slv-presenting #slv-bstrip, body.slv-presenting #slv-chat,
 body.slv-presenting .sl-insp, body.slv-presenting .sl-grip, body.slv-presenting .sl-edit-overlay,
-body.slv-presenting .sl-studio, body.slv-presenting .sl-mpanel{ display:none !important; }
-body.slv-presenting{ --sl-dock-left:0px !important; --sl-dock-right:0px !important;
-  --sl-dock-top:0px !important; --sl-dock-bottom:0px !important; --slv-bar-h:0px !important; cursor:none; }
+body.slv-presenting .sl-studio, body.slv-presenting .sl-mpanel, body.slv-presenting .sl-cpop{ display:none !important; }
+body.slv-presenting{ --slaide--dock-left:0px !important; --slaide--dock-right:0px !important;
+  --slaide--dock-top:0px !important; --slaide--dock-bottom:0px !important; --slv-bar-h:0px !important; cursor:none; }
 /* monitor picker dropdown (only when >1 display) */
 #slv-mon-menu{ position:fixed; z-index:2147483647; min-width:190px; display:none;
   background:var(--slv-bg-solid); border:1px solid var(--slv-line); border-radius:10px;
@@ -138,6 +138,7 @@ body.slv-presenting{ --sl-dock-left:0px !important; --sl-dock-right:0px !importa
 #slv-mon-menu .slv-item{ all:unset; display:flex; align-items:center; gap:9px; width:100%;
   padding:8px 10px; border-radius:7px; font-size:12.5px; color:var(--slv-ink); cursor:pointer; }
 #slv-mon-menu .slv-item:hover{ background:var(--slv-hover); }
+#slv-mon-menu .slv-item svg{ width:16px; height:16px; color:var(--slv-dim); flex:none; }
 #slv-present-caret{ padding:0 7px; }
 
 /* ---- reveal handle (peeks when the bar is hidden) ------------------------ */
@@ -653,10 +654,30 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     function fail(e){ try{ console.error('[slaide:web]', e); }catch(_){} }
 
     // Present: the Fullscreen API on this document; mirror the button via fullscreenchange.
+    //
+    // Entering fullscreen is ASYNC (requestFullscreen() resolves — and the 'fullscreenchange' event
+    // fires — only once the browser has actually completed the transition, at least a frame later).
+    // __slvSetPresenting was only ever called from that event, so waiting for it left a real,
+    // visible gap where the deck was already full-screen but the editor's selection ring hadn't been
+    // dropped yet (_editApi.setEdit(false) lives inside __slvSetPresenting) — the reported "blue ring
+    // visible at the start of presenting, gone a moment later" bug. Flip presenting state + drop edit
+    // mode SYNCHRONOUSLY, in the same tick as the click, then let the fullscreenchange handler just
+    // reconfirm it (a no-op) once the real transition lands; if the browser ends up refusing/
+    // cancelling the request, undo the eager flip so the UI doesn't claim to be presenting when it
+    // isn't.
     function present(){
       try{
         if(document.fullscreenElement){ if(document.exitFullscreen) document.exitFullscreen(); }
-        else { var el = document.documentElement; if(el.requestFullscreen) el.requestFullscreen(); }
+        else {
+          var el = document.documentElement;
+          if(window.__slvSetPresenting) window.__slvSetPresenting(true);
+          if(el.requestFullscreen){
+            var p = el.requestFullscreen();
+            if(p && typeof p.catch === 'function'){
+              p.catch(function(){ if(!document.fullscreenElement && window.__slvSetPresenting) window.__slvSetPresenting(false); });
+            }
+          }
+        }
       }catch(e){ fail(e); }
     }
     document.addEventListener('fullscreenchange', function(){
@@ -706,10 +727,23 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
       var k = kind === 'export-pdf' ? 'pdf' : kind === 'export-slaidec' ? 'slaidec'
         : kind === 'export-pptx' ? 'pptx' : kind === 'export-key' ? 'key' : null;
       if(!k) return;
-      fetch(url('/export/' + k), { method:'POST', credentials:'same-origin',
-        headers: hdr({ 'content-type':'application/json' }), body:'{}' })
-        .then(function(r){ if(!r.ok) throw new Error('export failed: ' + r.status); return r.blob(); })
-        .then(function(b){ dl(b, 'deck.' + k); }).catch(fail);
+      function sessionExport(){
+        fetch(url('/export/' + k), { method:'POST', credentials:'same-origin',
+          headers: hdr({ 'content-type':'application/json' }), body:'{}' })
+          .then(function(r){ if(!r.ok) throw new Error('export failed: ' + r.status); return r.blob(); })
+          .then(function(b){ dl(b, 'deck.' + k); }).catch(fail);
+      }
+      // Hosted app: pdf/pptx/png go through the backend's stateless project export (hook is
+      // installed by the web-editor shell; absent on desktop). The hook resolves false for
+      // demo/no-project (fall back to the session route), but an HTTP ERROR fails the export —
+      // falling back to the session route on error would silently produce imageless files.
+      if((k === 'pdf' || k === 'pptx' || k === 'png') && window.__slvHostedExport){
+        Promise.resolve().then(function(){ return window.__slvHostedExport(k); })
+          .then(function(handled){ if(!handled) sessionExport(); })
+          .catch(fail);
+        return;
+      }
+      sessionExport();
     }
 
     return {
@@ -738,6 +772,59 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     // __slvLiveRerender so the editor's structural dropdowns work identically on both.
     window.__slvLiveRerender = function(edits){ if(edits && edits.length) HOST.saveEdits(edits); };
   }
+
+  // Hosted web audience window: opened via window.open(...&slvview=present...) by openAudience()
+  // below. runtime.ts's AM_AUDIENCE detects the same query param and adds body.slv-presenting
+  // (hiding all chrome via CSS); here we only need HOST.present() to mean "stop presenting" —
+  // Fullscreen was entered by this window's own gesture (see the pill below), so exiting it +
+  // closing the window is the whole story. No BroadcastChannel wiring needed: runtime.ts already
+  // subscribes every window (audience included) to 'slaide:present:'+location.pathname.
+  var IS_WEB_AUDIENCE = !!WEB && /[?&]slvview=present([&#]|$)/.test(location.search);
+  if(IS_WEB_AUDIENCE){
+    HOST.present = function(){
+      try{ if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }catch(e){}
+      try{ window.close(); }catch(e){}
+    };
+    // Esc in fullscreen is consumed by the BROWSER (exits fullscreen before any keydown fires) —
+    // so leaving fullscreen IS the close signal for the projector, same as Esc on desktop.
+    document.addEventListener('fullscreenchange', function(){
+      if(!document.fullscreenElement){ try{ window.close(); }catch(e){} }
+    }, {signal:signal});
+    // Projector parity with the native viewer: no edit affordances, ever (belt to main.ts's
+    // braces — the editable render auto-enables edit mode after boot).
+    setTimeout(function(){ var s = S(); if(s && s.edit){ try{ s.edit(false); }catch(e){} } }, 800);
+    // Normally this window is ALREADY fullscreen — the opener passes 'popup,fullscreen' to
+    // window.open (Chromium 121+ w/ window-management permission). If the browser ignored the
+    // feature, the FIRST gesture anywhere in this window (a click, any key) enters fullscreen —
+    // no dedicated button needed.
+    ['pointerdown','keydown'].forEach(function(t){
+      document.addEventListener(t, function(){
+        if(!document.fullscreenElement){ try{ document.documentElement.requestFullscreen(); }catch(e){} }
+      }, {once:true, capture:true, signal:signal});
+    });
+    // Last-ditch visible affordance for browsers where neither path fired.
+    setTimeout(function(){
+      if(document.fullscreenElement) return;               // instant-fullscreen path worked
+      if(document.getElementById('slv-fs-pill')) return;   // guard against double-insert
+      var pill = document.createElement('button');
+      pill.id = 'slv-fs-pill';
+      pill.type = 'button';
+      pill.textContent = 'Click for fullscreen';
+      pill.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147483647;'
+        + 'padding:9px 16px;border:none;border-radius:999px;background:rgba(20,20,26,.82);color:#fff;'
+        + 'font:600 13px system-ui;cursor:pointer;';
+      pill.addEventListener('click', function(){
+        try{ document.documentElement.requestFullscreen(); }catch(e){}
+      });
+      document.addEventListener('fullscreenchange', function(){
+        if(document.fullscreenElement) pill.remove();
+      }, {signal:signal});
+      document.body.appendChild(pill);
+    }, 600);
+  }
+  // Web, and NOT the audience window itself: this window may open + manage an audience window on
+  // a chosen screen. Desktop keeps its existing __SLV_MONITORS__/IPC path untouched.
+  var CAN_HOST_AUDIENCE = !!WEB && !IS_WEB_AUDIENCE;
 
   // Capability gating. The engine render injects window.__SLV_CAPS__ (web);
   // desktop uses __SLV_EDITABLE__ + __SLV_LICENSE__ instead.
@@ -818,10 +905,10 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     var h = bar.offsetHeight;
     document.documentElement.style.setProperty('--slv-bar-h', h + 'px');
     // Native: a pinned (docked) toolbar stays visible, so the slide must sit BELOW it — reserve top
-    // space via --sl-dock-top. Unpinned it auto-hides, so reserve nothing (it only overlays on
-    // hover). The web shell syncs --sl-dock-top itself (its bar is always pinned), so skip there.
+    // space via --slaide--dock-top. Unpinned it auto-hides, so reserve nothing (it only overlays on
+    // hover). The web shell syncs --slaide--dock-top itself (its bar is always pinned), so skip there.
     if(!WEB){
-      document.documentElement.style.setProperty('--sl-dock-top', pinned ? (h + 'px') : '0px');
+      document.documentElement.style.setProperty('--slaide--dock-top', pinned ? (h + 'px') : '0px');
       var s = S(); if(s && s.relayout) s.relayout();
     }
   }
@@ -892,7 +979,10 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     presentBtn.querySelector('.slv-ic-play').style.display = on ? 'none' : '';
     presentBtn.querySelector('.slv-ic-stop').style.display = on ? '' : 'none';
   };
-  presentBtn.addEventListener('click', function(){ HOST.present(); });
+  presentBtn.addEventListener('click', function(){
+    if(CAN_HOST_AUDIENCE && audienceWin && !audienceWin.closed){ closeAudience(); return; }
+    HOST.present();
+  });
   // Second-screen presenting (native): the audience is a SEPARATE window, so the main window keeps
   // its chrome — just reflect Present⇄Stop on the button (Rust calls this when the audience opens/closes).
   window.__slvAudienceOn = function(on){
@@ -902,6 +992,50 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     presentBtn.querySelector('.slv-ic-play').style.display = on ? 'none' : '';
     presentBtn.querySelector('.slv-ic-stop').style.display = on ? '' : 'none';
   };
+  // Second-screen presenting (hosted web): the audience is a real OS window opened on the chosen
+  // display (see the caret menu below), mirroring the native flow above. window.open's handle is
+  // kept (no noopener) purely so audienceWin.closed can be polled — window.open gives no native
+  // close event, and popup blockers can close the tab without notice — so a slow poll is the only
+  // reliable signal. Nav sync + blanking are already covered: runtime.ts's BroadcastChannel keys
+  // on location.pathname, which is identical between opener and audience.
+  var audienceWin = null, audiencePoll = null, onAudienceBlocked = null, audienceSeq = 0;
+  function closeAudience(){
+    if(audiencePoll){ clearInterval(audiencePoll); audiencePoll = null; }
+    if(audienceWin && !audienceWin.closed){ try{ audienceWin.close(); }catch(e){} }
+    audienceWin = null;
+    window.__slvHasAudience = false;
+    window.__slvAudienceOn(false);
+  }
+  function audienceUrl(){
+    var s = S(), n = (s ? s.index : 0) + 1;
+    var u = location.href.replace(/#.*$/, '');
+    u += (u.indexOf('?') >= 0 ? '&' : '?') + 'slvview=present';
+    if(WEB && WEB.sessionId) u += '&slvSid=' + encodeURIComponent(WEB.sessionId);
+    return u + '#' + n;
+  }
+  function openAudience(scr){
+    closeAudience();
+    // 'popup,fullscreen': Chrome 117+ opens the popup DIRECTLY fullscreen on the display given by
+    // left/top when the window-management permission is granted (which the screen picker already
+    // obtained) — PowerPoint-style instant projector, no click needed inside the popup. Browsers
+    // without the feature ignore the token and fall back to a screen-bounds popup + the pill.
+    var feat = 'left=' + scr.left + ',top=' + scr.top + ',width=' + scr.width + ',height=' + scr.height
+      + ',menubar=no,toolbar=no,location=no,status=no,scrollbars=no,popup,fullscreen';
+    // Unique name every time: reusing a named window (incl. one left over from an earlier
+    // present) NAVIGATES it and silently IGNORES all window features — including 'fullscreen'.
+    var w = window.open(audienceUrl(), 'slaide-audience-' + (++audienceSeq), feat);
+    if(!w){ if(onAudienceBlocked) onAudienceBlocked(); return; }   // popup blocked
+    audienceWin = w;
+    window.__slvHasAudience = true;
+    window.__slvAudienceOn(true);
+    // PowerPoint parity: control STAYS on the presenter screen. window.open moves OS focus to the
+    // popup, where arrow keys are deliberately ignored (the audience only mirrors) — snatch focus
+    // back so the presenter's arrows drive both windows immediately. Twice: some Chromium builds
+    // only honour it after the popup finishes taking focus.
+    try{ window.focus(); }catch(e){}
+    setTimeout(function(){ try{ window.focus(); }catch(e){} }, 150);
+    audiencePoll = setInterval(function(){ if(!audienceWin || audienceWin.closed) closeAudience(); }, 500);
+  }
   // Let the deck runtime's keyboard shortcuts (F5 / Shift+F5 / Esc) drive presentation through the
   // host: native → IPC OS-window fullscreen, web → the Fullscreen API. HOST.present() toggles, so
   // we only fire it when the live state differs from what the runtime asked for.
@@ -919,12 +1053,13 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     presentCaret.hidden = false;
     presentCaret.title = 'Present options';
     var menu = document.createElement('div'); menu.id = 'slv-mon-menu'; menu.setAttribute('role','menu'); document.body.appendChild(menu);
-    if(canPresenter){
+    function addPresenterItem(){
       var pv = document.createElement('button'); pv.className = 'slv-item'; pv.setAttribute('role','menuitem');
       pv.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="13" height="10" rx="1.6"/><path d="M17 8h5v8a2 2 0 0 1-2 2h-9"/><line x1="8" y1="18" x2="8" y2="21"/></svg> Presenter view';
       pv.addEventListener('click', function(){ menu.classList.remove('slv-open'); var s = S(); if(s && s.presenter) s.presenter(); });
       menu.appendChild(pv);
     }
+    if(canPresenter && !CAN_HOST_AUDIENCE) addPresenterItem();
     if(mons.length >= 2){
       if(canPresenter){ var dv = document.createElement('div'); dv.className = 'slv-menu-div'; menu.appendChild(dv); }
       mons.forEach(function(name, i){
@@ -938,6 +1073,72 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
       menu.style.top = (r.bottom + 6) + 'px'; menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px'; } }
     presentCaret.addEventListener('click', function(e){ e.stopPropagation(); openMon(!menu.classList.contains('slv-open')); });
     document.addEventListener('click', function(e){ if(!menu.contains(e.target) && e.target !== presentCaret) openMon(false); }, {signal:signal});
+
+    // Present to a chosen screen (hosted web only) — desktop parity: the display list is the
+    // PRIMARY menu content (● current / ○ others), "Presenter view" sits below a divider. Every
+    // state renders a visible row (detecting / one display / blocked / needs Chrome) — a silent
+    // empty menu is indistinguishable from "not implemented".
+    if(CAN_HOST_AUDIENCE){
+      var screensBox = document.createElement('div');
+      menu.insertBefore(screensBox, menu.firstChild || null);
+      var dv0 = document.createElement('div'); dv0.className = 'slv-menu-div';
+      menu.insertBefore(dv0, screensBox.nextSibling);
+      addPresenterItem();   // after the divider — screens come first, like the desktop monitor list
+      function statusItem(text){
+        screensBox.innerHTML = '';
+        var it = document.createElement('button'); it.className = 'slv-item'; it.setAttribute('role','menuitem');
+        it.disabled = true; it.style.opacity = '.55'; it.style.cursor = 'default';
+        it.textContent = text;
+        screensBox.appendChild(it);
+      }
+      function renderScreens(d){
+        screensBox.innerHTML = '';
+        var screens = d.screens || [];
+        if(screens.length < 2){ statusItem('Only one display detected'); return; }
+        screens.forEach(function(scr, i){
+          var it = document.createElement('button'); it.className = 'slv-item'; it.setAttribute('role','menuitem');
+          it.textContent = (scr === d.currentScreen ? '● ' : '○ ') + (scr.label || ('Display ' + (i + 1))) + ' (' + scr.width + 'x' + scr.height + ')';
+          it.title = 'Present on this display';
+          it.addEventListener('click', function(){ openMon(false); openAudience(scr); });
+          screensBox.appendChild(it);
+        });
+      }
+      onAudienceBlocked = function(){ statusItem('Popup blocked: allow popups for this site, then retry'); openMon(true); };
+      if(!('getScreenDetails' in window)){
+        statusItem('Screen pick needs Chrome or Edge');
+      } else {
+        var screenDetails = null, requesting = false;
+        function requestScreens(){
+          if(screenDetails || requesting) return;
+          requesting = true;
+          statusItem('Detecting displays…');
+          window.getScreenDetails().then(function(d){
+            screenDetails = d;
+            renderScreens(d);
+            d.addEventListener('screenschange', function(){ renderScreens(d); }, {signal:signal});
+          }).catch(function(){
+            requesting = false;   // a later grant (site settings) can retry via click/permission-change
+            statusItem('Display access blocked: allow "Window management" in site settings, then reopen this menu');
+          });
+        }
+        statusItem((window.screen && window.screen.isExtended === false)
+          ? 'Only one display detected' : 'Detecting displays…');
+        // Eager populate when the permission is already granted — the menu opens pre-filled like
+        // desktop. 'window-management' is the current name, 'window-placement' the pre-Chrome-111
+        // one; a prompt-gated grant happens on the caret click below instead (needs the gesture).
+        try{
+          var _q = function(name){ return navigator.permissions.query({name: name}); };
+          _q('window-management').catch(function(){ return _q('window-placement'); }).then(function(st){
+            if(!st) return;
+            if(st.state === 'granted') requestScreens();
+            if(st.addEventListener) st.addEventListener('change', function(){
+              if(st.state === 'granted'){ screenDetails = null; requesting = false; requestScreens(); }
+            });
+          }).catch(function(){});
+        }catch(e){}
+        presentCaret.addEventListener('click', function(){ requestScreens(); }, {signal:signal});
+      }
+    }
   })();
 
   // ---- file menu (Open / Save / Reload / Export) --------------------------
@@ -1142,11 +1343,11 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     Array.prototype.forEach.call(list.children, function(el, i){ el.classList.toggle('slv-thumb-active', i === idx); });
     if(q('#slv-thumbs').classList.contains('slv-open')){ var a = list.children[idx]; if(a && a.scrollIntoView) a.scrollIntoView({ block:'nearest' }); }
   }
-  // Docking (not overlay): reserve a left gutter via --sl-dock-left and ask the deck
+  // Docking (not overlay): reserve a left gutter via --slaide--dock-left and ask the deck
   // to recompute its fit so the slide shrinks + recenters beside the panel.
   var DOCK_W = 196;
   function setDock(open){
-    document.documentElement.style.setProperty('--sl-dock-left', open ? (DOCK_W + 'px') : '0px');
+    document.documentElement.style.setProperty('--slaide--dock-left', open ? (DOCK_W + 'px') : '0px');
     var s = S(); if(s && s.relayout) s.relayout();
   }
   var thumbsBtn = q('#slv-thumbs-btn');
@@ -1203,7 +1404,7 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
   function setBstrip(open){
     body.classList.toggle('slv-bstrip-on', open);
     if(open && (!bstripBuilt || bstripDirty)) buildBstrip();
-    document.documentElement.style.setProperty('--sl-dock-bottom', open ? (BSTRIP_H + 'px') : '0px');
+    document.documentElement.style.setProperty('--slaide--dock-bottom', open ? (BSTRIP_H + 'px') : '0px');
     var s = S(); if(s && s.relayout) s.relayout();
     if(open) highlightBstrip(s ? s.index : 0);
   }
@@ -1216,7 +1417,7 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     var panel = q('#slv-chat'); if(panel) panel.classList.toggle('slv-open', open);
     var btn = q('#slv-chat-btn'); if(btn) btn.setAttribute('aria-pressed', open ? 'true' : 'false');
     if(!q('#slv-thumbs').classList.contains('slv-open')){
-      document.documentElement.style.setProperty('--sl-dock-left', open ? (CHAT_W + 'px') : '0px');
+      document.documentElement.style.setProperty('--slaide--dock-left', open ? (CHAT_W + 'px') : '0px');
       var s = S(); if(s && s.relayout) s.relayout();
     }
   }
@@ -1257,7 +1458,7 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
         if(thumbsBeforeMaster) setThumbs(true);
         if(bstripBeforeMaster) setBstrip(true);
       }
-      if(s && s.editMaster) s.editMaster(master);
+      if(s && s.editMaster) s.editMaster(master);         // editMaster is now authoritative over the live DOM
     }
     if(modeSlide) modeSlide.addEventListener('click', function(){ setMode(false); });
     if(modeMaster) modeMaster.addEventListener('click', function(){ setMode(true); });

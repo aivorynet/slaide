@@ -16,6 +16,7 @@ import { SCHEMA_VERSION } from '../types.js';
 import { resolveColors, resolveFonts, resolveTypeScale, resolveVariant } from './tokens.js';
 import { renderRegion, isKnownColorClass, colorValue } from './markdown.js';
 import { resolveChrome, placeholderCtx, todayFormatted } from './chrome.js';
+import { lintUnknownVars } from './unknown-vars.js';
 import { expandAnchor } from '../util.js';
 import {
   ENTRANCE_NAMES,
@@ -203,6 +204,9 @@ function bgHexes(bg: BackgroundDef | null, tokens: Record<string, string>): stri
     const h = colorToHex(bg.color, tokens);
     return h ? [h] : [];
   }
+  // Model-authored masters ship gradient backgrounds without `stops` (e.g. a `src:` ref) —
+  // never crash the whole compile on one bad background; treat it as unknowable.
+  if (!Array.isArray(bg.stops)) return [];
   return bg.stops.map((s) => firstHex(s)).filter((h): h is string => !!h);
 }
 /** Candidate hexes for a slot surface value (box:/bg:). A named/literal gradient
@@ -213,6 +217,23 @@ function surfaceHexes(surface: string, tokens: Record<string, string>): string[]
   const h = colorToHex(surface, tokens);
   return h ? [h] : [];
 }
+// Below this averaged relative luminance, a slide's resolved background reads as a "dark
+// ground" — used to pick a `chrome.logo` { dark, light } mark (see chrome.ts `pickLogo`).
+const GROUND_DARK_MAX_LUM = 0.4;
+
+/** Is this slide's resolved background a dark or light ground? Reuses the same
+ *  effective-background resolution as the contrast lint (background + variant-merged
+ *  tokens), so it tracks `variant:` automatically. null when unknowable (e.g. a photo
+ *  background with no flat colour to sample). */
+function slideGroundDark(bg: BackgroundDef | null, tokens: Record<string, string>): boolean | null {
+  const hexes = bgHexes(bg, tokens);
+  if (!hexes.length) return null;
+  const lums = hexes.map(relLum).filter((l): l is number => l !== null);
+  if (!lums.length) return null;
+  const avg = lums.reduce((a, b) => a + b, 0) / lums.length;
+  return avg < GROUND_DARK_MAX_LUM;
+}
+
 /** Worst-case text/background contrast for a text-bearing slot, or null if unknowable. */
 function slotContrast(slot: SlotDef, bg: BackgroundDef | null, tokens: Record<string, string>): number | null {
   if (slot.type === 'image' || slot.type === 'media' || slot.type === 'free') return null;
@@ -247,6 +268,34 @@ function normalizeAreas(areas: string[]): string {
   return areas.map((row) => `'${String(row).replace(/['"]/g, '').trim()}'`).join(' ');
 }
 
+/** Grid area names referenced by a layout's `areas` rows, excluding CSS's null-cell
+ *  placeholder (a run of `.`). Shared by the compiler and the overlapping-slots lint. */
+function gridAreaTokens(areas: string[] | undefined): Set<string> {
+  const tokens = new Set<string>();
+  for (const row of areas ?? []) {
+    for (const tok of String(row).replace(/['"]/g, '').trim().split(/\s+/)) {
+      if (tok && !/^\.+$/.test(tok)) tokens.add(tok);
+    }
+  }
+  return tokens;
+}
+
+/** A slide's regions are routed into a layout's grid by NAME — the slot key IS the CSS
+ *  `grid-area` the region renders into (see `grid-area:${r.name}` in render/html.ts). A slot
+ *  whose key never appears among the grid's named cells silently falls back to the same
+ *  default cell as every other such slot, so two+ "orphaned" slots end up stacked directly
+ *  on top of one another (e.g. title printed over body). Exported for direct unit testing. */
+export function checkOverlappingSlots(name: string, def: LayoutDef): Warning | null {
+  const areaTokens = gridAreaTokens(def.areas);
+  const orphaned = Object.keys(def.slots ?? {}).filter((s) => !areaTokens.has(s));
+  if (orphaned.length === 0) return null;
+  const message =
+    orphaned.length > 1
+      ? `layout '${name}': slots ${orphaned.join(', ')} share one grid cell — assign each slot its own area in the grid`
+      : `layout '${name}': slot '${orphaned[0]}' has no matching area in the grid-template-areas — it will default-stack onto another slot's cell`;
+  return { code: 'overlapping-slots', message };
+}
+
 const FALLBACK_LAYOUT: LayoutDef = {
   areas: ['default'],
   slots: { default: { type: 'body' } },
@@ -261,6 +310,12 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
   const canvas = deriveCanvas(master);
 
   const colorTokens = resolveColors(master.colors, warnings);
+  // Resolve every variant once, up front — both as a validation pass (a dangling {palette.x}
+  // inside a variant no slide uses would otherwise never be resolved, landing silently and only
+  // warning later in the editor) and as a cache for the per-slide lookups below.
+  const variantCache: Record<string, Record<string, string>> = {};
+  for (const name of Object.keys(master.variants ?? {}))
+    variantCache[name] = resolveVariant(master, name, warnings);
   const typeTokens = resolveTypeScale(master.typeScale);
   const { tokens: fontTokens, imports: fontImports } = resolveFonts(master.fonts as any, warnings);
   const gradientTokens: Record<string, string> = {};
@@ -313,6 +368,9 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
     if (k.startsWith('~')) cascaded[k.slice(1)] = v;
   }
   const slides: SlideIR[] = [];
+  // Master-level lint (not per-slide content) — check each used layout's grid/slots
+  // agreement once, no matter how many slides ride it.
+  const lintedLayouts = new Set<string>();
 
   parsed.slides.forEach((pslide, i) => {
     const scoped: Record<string, unknown> = {};
@@ -330,6 +388,10 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
         message: `Slide ${i + 1}: unknown layout "${layoutName}", using fallback.`,
         line: pslide.sourceLine,
       });
+    } else if (!lintedLayouts.has(layoutName)) {
+      lintedLayouts.add(layoutName);
+      const overlap = checkOverlappingSlots(layoutName, layoutDef);
+      if (overlap) warnings.push(overlap);
     }
 
     const transition = asString(eff.transition) ?? transitions.default;
@@ -359,7 +421,9 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
     // A slide's `variant:` wins; otherwise a layout may bind its own variant, so a
     // dark layout's slots resolve light roles automatically (no dark-on-dark trap).
     const variantName = asString(eff.variant) ?? asString(layoutDef.variant);
-    const vars: Record<string, string> = variantName ? resolveVariant(master, variantName, warnings) : {};
+    const vars: Record<string, string> = variantName
+      ? { ...(variantCache[variantName] ?? resolveVariant(master, variantName, warnings)) }
+      : {};
     const tms = eff['transition-ms'];
     if (tms !== undefined) vars['--transition-ms'] = /^[\d.]+$/.test(String(tms)) ? `${tms}ms` : String(tms);
     const tease = asString(eff['transition-ease']);
@@ -393,13 +457,16 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
       // positioned shapes/boxes (placed in the source). Always accepted.
       const slot: SlotDef | undefined = target === 'free' ? { type: 'free' } : layoutDef.slots[target];
       if (!slot) {
-        // Always warn on a misrouted region — content silently disappears otherwise,
-        // and an empty `:: typo ::` is just as likely a mistake the author should see.
+        // Always flag a misrouted region — content silently disappears otherwise, and an
+        // empty `:: typo ::` is just as likely a mistake the author should see. This is a
+        // hard error (see vocab.ts ERROR_SEVERITY_CODES): a `deck_source` write that only
+        // renames region sigils without checking the resolved layout's actual slots is a
+        // semantic no-op that must not report ok:true.
         const has = region.markdown.trim() !== '';
         const slotList = Object.keys(layoutDef.slots).join(', ') || '(none)';
         warnings.push({
           code: 'unknown-slot',
-          message: `Slide ${i + 1}: layout "${layoutName}" has no slot "${target}"${has ? ' — its content is dropped' : ''}. Available slots: ${slotList}.`,
+          message: `Slide ${i + 1}: layout "${layoutName}" has no slot "${target}"${has ? ' — its content is dropped' : ''}. This layout defines: ${slotList}. Fix it: rename the region to one of those slots, or set layout: to one that defines "${target}".`,
           line: pslide.sourceLine,
         });
         continue;
@@ -430,7 +497,8 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
     const headingMatch = pslide.regions.map((r) => r.markdown).join('\n').match(/^#{1,6}\s+(.+)$/m);
     const slideTitle = headingMatch ? headingMatch[1].replace(/[*_`]/g, '').trim() : null;
     const ctx = placeholderCtx(parsed.headmatter, eff, i + 1, totalSlides, slideTitle, today);
-    const chrome = resolveChrome(master, layoutDef, eff, ctx, warnings);
+    const groundDark = slideGroundDark(background, slideTokens);
+    const chrome = resolveChrome(master, layoutDef, eff, ctx, warnings, layoutName, groundDark);
 
     slides.push({
       index: i,
@@ -449,6 +517,21 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
     });
   });
 
+  // Undefined `var(--X)` lint + autofix (see unknown-vars.ts) — catches model-authored
+  // raw HTML (e.g. a `<span style="font-size:var(--size-stat)">`) that references a
+  // custom property nothing in the master ever defines. "Defined" is every token this
+  // compile emitted at the root (colours/type-scale/fonts/gradients/master overrides,
+  // see `tokens` above) plus any per-slide variant overrides, so a token only bound on
+  // some slides isn't flagged as missing deck-wide.
+  const definedVars = new Set(Object.keys(tokens));
+  definedVars.add('--transition-ms'); // always emitted by render/css.ts tokenCss(), independent of `tokens`
+  for (const s of slides) for (const k of Object.keys(s.vars)) definedVars.add(k);
+  const cssSources = slides.flatMap((s) => s.regions.map((r) => r.html));
+  cssSources.push(animCss);
+  const { warnings: unknownVarWarnings, fix: fixUnknownVars } = lintUnknownVars(cssSources, definedVars, tokens);
+  warnings.push(...unknownVarWarnings);
+  for (const s of slides) for (const r of s.regions) r.html = fixUnknownVars(r.html);
+
   return {
     schema: SCHEMA_VERSION,
     meta: {
@@ -459,7 +542,7 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
     tokens,
     fontImports,
     transitions,
-    animCss,
+    animCss: fixUnknownVars(animCss),
     ui,
     slides,
     warnings,

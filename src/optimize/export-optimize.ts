@@ -5,10 +5,76 @@
 //
 //  - bakeCharts: pre-render ```mermaid / ```echart charts to STATIC inline SVG and remove
 //    the engine bundles + boot script, so an exported .html carries no chart-engine code.
+//    A `chartCache` makes this incremental: each chart is keyed by its source + theme hash,
+//    so an unchanged chart is injected from cache (no browser) and only new/changed charts
+//    hit Chromium — and if EVERY chart is cached the bake runs with no browser at all.
 //  - image optimization: downscale to a max width and re-encode raster images to shrink
 //    exported files — WebP for inlined HTML (best ratio, keeps alpha), format-preserving
 //    for .slaidec assets (so the on-disk filename/reference stays valid).
+import { createHash } from 'node:crypto';
 import type { Page } from 'playwright';
+
+/**
+ * A content-addressed store of baked chart SVGs. `themeHash` folds the deck's resolved chart
+ * tokens into the key so a re-theme re-bakes; `get` returns a cached SVG (or null), `put` stores
+ * a freshly baked one. Implementations MUST be write-once per hash (never overwrite) so a given
+ * (source, theme) always maps to identical bytes — that is what keeps a `.slaidec` re-pack
+ * byte-identical (baked SVG bytes, e.g. mermaid element ids, are not stable across re-bakes).
+ */
+export interface ChartCache {
+  themeHash: string;
+  get(hash: string): string | null;
+  put(hash: string, svg: string): void;
+}
+
+/** Empty `.sl-chart` placeholder element (div=echart / pre=mermaid), pre-boot (no SVG yet). */
+const CHART_EL_RE = /<(div|pre)\b([^>]*\bclass="[^"]*\bsl-chart\b[^"]*"[^>]*)>\s*<\/\1>/g;
+
+export function chartHash(b64: string, themeHash: string): string {
+  return createHash('sha1').update(b64 + '|' + themeHash).digest('hex');
+}
+
+interface ChartPlaceholder { full: string; tag: string; attrs: string; b64: string }
+
+function scanCharts(html: string): ChartPlaceholder[] {
+  const out: ChartPlaceholder[] = [];
+  CHART_EL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CHART_EL_RE.exec(html))) {
+    const dm = /data-(?:option|graph)="([^"]*)"/.exec(m[2]);
+    if (dm) out.push({ full: m[0], tag: m[1], attrs: m[2], b64: dm[1] });
+  }
+  return out;
+}
+
+/** Remove the inert chart-lib blobs + the boot `<script>` — the browser never runs a chart engine. */
+function stripChartEngine(html: string): string {
+  return html
+    .replace(/<script type="text\/plain" id="sl-(?:mermaid|echart)-lib">[\s\S]*?<\/script>\s*/g, '')
+    .replace(/<script>(?:(?!<\/script>)[\s\S])*?__slaideCharts(?:(?!<\/script>)[\s\S])*?<\/script>\s*/g, '');
+}
+
+/**
+ * Inject baked SVGs from `cache` into a render's chart placeholders (no browser). Strips the chart
+ * engine (lib blobs + boot script) ONLY when every chart was injected, so a partial cache degrades
+ * to the live boot rather than a blank chart. Used by the all-cached fast path below AND by the
+ * engine to serve an editor render: the bake runs on a CLEAN (non-editable) render to fill the
+ * cache, then these SVGs are injected into the editable html (which must never be run in Chromium).
+ */
+export function injectBakedCharts(html: string, cache: ChartCache): { html: string; injected: number; total: number } {
+  const charts = scanCharts(html);
+  let injected = 0;
+  let out = html;
+  for (const c of charts) {
+    const svg = cache.get(chartHash(c.b64, cache.themeHash));
+    if (svg == null) continue;
+    injected++;
+    const cleanAttrs = c.attrs.replace(/\s*data-(?:option|graph)="[^"]*"/g, '');
+    out = out.replace(c.full, `<${c.tag}${cleanAttrs} data-rendered="1">${svg}</${c.tag}>`);
+  }
+  if (injected === charts.length) out = stripChartEngine(out);
+  return { html: out, injected, total: charts.length };
+}
 
 /** Image optimization knobs. `quality` is 1..100; `maxWidth` downscales (never upscales). */
 export interface ImageOpts {
@@ -75,12 +141,33 @@ async function optimizeImagesInHtml(page: Page, html: string, o: ImageOpts): Pro
 /** Bake charts and/or optimize inlined images for a standalone HTML export, in one session. */
 export async function optimizeExportHtml(
   html: string,
-  opts: { canvas: { width: number; height: number }; bake?: boolean; image?: ImageOpts; browser?: import('playwright').Browser },
+  opts: {
+    canvas: { width: number; height: number };
+    bake?: boolean;
+    image?: ImageOpts;
+    browser?: import('playwright').Browser;
+    chartCache?: ChartCache;
+  },
 ): Promise<string> {
   // Real charts are present only when an engine lib tag was injected (the `.sl-chart`
   // class string is always in the stylesheet, so don't key off that).
   const needBake = !!opts.bake && (html.includes('id="sl-mermaid-lib"') || html.includes('id="sl-echart-lib"'));
   if (!needBake && !opts.image) return html;
+
+  // Resolve the chart cache BEFORE touching a browser: a fully-cached deck bakes with no Chromium
+  // (and even without Playwright installed). Only cache misses need a headless render.
+  let charts: ChartPlaceholder[] = [];
+  const cachedByB64: Record<string, string> = {};
+  if (needBake && opts.chartCache) {
+    charts = scanCharts(html);
+    for (const c of charts) {
+      const svg = opts.chartCache.get(chartHash(c.b64, opts.chartCache.themeHash));
+      if (svg != null) cachedByB64[c.b64] = svg;
+    }
+    const allCached = charts.length > 0 && charts.every((c) => c.b64 in cachedByB64);
+    if (allCached && !opts.image) return injectBakedCharts(html, opts.chartCache).html;
+  }
+
   const { chromium } = await loadPlaywright();
   const browser = opts.browser ?? (await chromium.launch());
   try {
@@ -89,8 +176,19 @@ export async function optimizeExportHtml(
     if (needBake) {
       await page.setContent(out, { waitUntil: 'networkidle' });
       await page.evaluate(() => (document as any).fonts?.ready);
-      // Render each chart with ITS slide active — a chart sizes to its slot, and a slot in a
-      // flowing/box layout measures wrong while a different slide is active (the live runtime
+      // Pre-inject cached SVGs (marked data-rendered so the boot skips them) — only misses render.
+      await page.evaluate((cached: Record<string, string>) => {
+        document.querySelectorAll('.sl-chart').forEach((el) => {
+          const b64 = el.getAttribute('data-option') || el.getAttribute('data-graph') || '';
+          if (b64 && cached[b64] != null) {
+            el.innerHTML = cached[b64];
+            el.setAttribute('data-rendered', '1');
+            el.setAttribute('data-cache-hit', '1');
+          }
+        });
+      }, cachedByB64);
+      // Render each (uncached) chart with ITS slide active — a chart sizes to its slot, and a slot
+      // in a flowing/box layout measures wrong while a different slide is active (the live runtime
       // avoids this by only rendering a chart when its slide becomes active). Stepping through
       // matches that, so a baked chart lands exactly where the live renderer puts it.
       await page.evaluate(async () => {
@@ -108,10 +206,14 @@ export async function optimizeExportHtml(
       await page
         .waitForFunction(() => (window as any).__slaideChartsReady === true, { timeout: 8000 })
         .catch(() => {});
-      out = await page.evaluate(() => {
-        // Freeze each chart as its rendered SVG; drop the now-useless data + engine plumbing.
+      const res = await page.evaluate(() => {
+        const fresh: Record<string, string> = {};
+        // Freeze each chart as its rendered SVG; capture the newly-rendered ones for the cache;
+        // drop the now-useless data + engine plumbing.
         document.querySelectorAll('.sl-chart').forEach((el) => {
           const svg = el.querySelector('svg') as SVGSVGElement | null;
+          const b64 = el.getAttribute('data-option') || el.getAttribute('data-graph') || '';
+          const cacheHit = el.getAttribute('data-cache-hit') === '1';
           if (svg) {
             // ECharts renders the SVG `position:absolute` inside its own sizing wrapper. Frozen
             // as the chart's only child that wrapper is gone, so the absolute SVG escapes to the
@@ -120,10 +222,12 @@ export async function optimizeExportHtml(
             svg.style.left = '';
             svg.style.top = '';
             el.innerHTML = svg.outerHTML;
+            if (!cacheHit && b64) fresh[b64] = svg.outerHTML;
           }
           el.removeAttribute('data-graph');
           el.removeAttribute('data-option');
           el.removeAttribute('data-rendered');
+          el.removeAttribute('data-cache-hit');
         });
         document.querySelectorAll('#sl-mermaid-lib, #sl-echart-lib').forEach((n) => n.remove());
         document.querySelectorAll('script').forEach((s) => {
@@ -142,8 +246,15 @@ export async function optimizeExportHtml(
             if (c.indexOf('sl-anim-') === 0) s.classList.remove(c);
           });
         });
-        return '<!doctype html>\n' + document.documentElement.outerHTML;
+        return { html: '<!doctype html>\n' + document.documentElement.outerHTML, fresh };
       });
+      out = res.html;
+      // Persist newly-baked SVGs (write-once per hash — never overwrite a cached entry).
+      if (opts.chartCache) {
+        for (const [b64, svg] of Object.entries(res.fresh)) {
+          opts.chartCache.put(chartHash(b64, opts.chartCache.themeHash), svg);
+        }
+      }
     }
     if (opts.image) out = await optimizeImagesInHtml(page, out, opts.image);
     return out;

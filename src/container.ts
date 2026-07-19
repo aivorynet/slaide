@@ -188,6 +188,15 @@ function stageDeckFile(deckPath: string): { entries: Map<string, Buffer>; entryN
       entries.set('assets/' + rel, readFileSync(join(assetsDir, rel)));
     }
   }
+  // Sibling charts/ folder = the derived baked-chart SVG cache (charts/<hash>.svg). Purely derived
+  // (the deck text stays the authoritative chart source), but travels along so the deck renders its
+  // charts offline / anywhere with no engine. Folder-pack already includes it; mirror that here.
+  const chartsDir = join(deckDir, 'charts');
+  if (existsSync(chartsDir) && statSync(chartsDir).isDirectory()) {
+    for (const rel of walkFiles(chartsDir)) {
+      entries.set('charts/' + rel, readFileSync(join(chartsDir, rel)));
+    }
+  }
   return { entries, entryName: deckName };
 }
 

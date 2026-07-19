@@ -198,8 +198,8 @@ export function entranceCss(defs: Record<string, EntranceDef> = ENTRANCES): stri
     .map(([n, d]) => {
       let css = `.sl-ent-${n}:not(.sl-shown){${d.hidden};}`;
       const vars: string[] = [];
-      if (d.easing) vars.push(`--sl-ent-ease:${d.easing}`);
-      if (d.durationMs !== undefined) vars.push(`--sl-ent-dur:${d.durationMs}ms`);
+      if (d.easing) vars.push(`--slaide--ent-ease:${d.easing}`);
+      if (d.durationMs !== undefined) vars.push(`--slaide--ent-dur:${d.durationMs}ms`);
       if (vars.length) css += `.sl-ent-${n}{${vars.join(';')};}`;
       return css;
     })
@@ -209,9 +209,9 @@ export function entranceCss(defs: Record<string, EntranceDef> = ENTRANCES): stri
 /** Generic build machinery + reduced-motion / print guards. Emitted once. */
 export function buildBaseCss(): string {
   return [
-    `.sl-build{transition:opacity var(--sl-ent-dur,.35s) var(--sl-ent-ease,ease) var(--sl-ent-delay,0s),` +
-      `transform var(--sl-ent-dur,.35s) var(--sl-ent-ease,ease) var(--sl-ent-delay,0s),` +
-      `filter var(--sl-ent-dur,.35s) var(--sl-ent-ease,ease) var(--sl-ent-delay,0s);}`,
+    `.sl-build{transition:opacity var(--slaide--ent-dur,.35s) var(--slaide--ent-ease,ease) var(--slaide--ent-delay,0s),` +
+      `transform var(--slaide--ent-dur,.35s) var(--slaide--ent-ease,ease) var(--slaide--ent-delay,0s),` +
+      `filter var(--slaide--ent-dur,.35s) var(--slaide--ent-ease,ease) var(--slaide--ent-delay,0s);}`,
     // bare `>>>` (no sl-ent-* class) keeps the classic fade-up
     `.sl-build[data-build]:not(.sl-shown):not([class*="sl-ent-"]){opacity:0;transform:translateY(8px);}`,
     `.sl-build.sl-shown{opacity:1;transform:none;filter:none;}`,

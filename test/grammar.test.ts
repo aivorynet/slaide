@@ -36,6 +36,15 @@ describe('grammar diagnostics', () => {
     expect(build(':: body ::\nhello').codes).not.toContain('unknown-slot');
   });
 
+  test('#3 unknown-slot message teaches: names the slide + bad slot, lists the layout\'s real slots, suggests a fix', () => {
+    const w = build(':: left ::\ncontent').ir.warnings.find((x) => x.code === 'unknown-slot');
+    expect(w).toBeDefined();
+    expect(w!.message).toBe(
+      'Slide 1: layout "main" has no slot "left" — its content is dropped. This layout defines: body, title. '
+      + 'Fix it: rename the region to one of those slots, or set layout: to one that defines "left".',
+    );
+  });
+
   test('#2 config-shaped body eaten as frontmatter warns', () => {
     const src = HEAD + 'layout: main\n---\n:: body ::\nFirst\n---\nName: Acme\nFounded: 2021\n---\n:: body ::\nThird';
     const ir = compile(parseDeck(src), MASTER);
@@ -71,5 +80,32 @@ describe('sigil escaping (#4)', () => {
     const { ir, codes } = build(':: body ::\n\\[x]{.xxlarge}');
     expect(JSON.stringify(ir.slides[0].regions)).toContain('[x]{.xxlarge}');
     expect(codes).not.toContain('unknown-class'); // escaped → not validated
+    expect(codes).not.toContain('bad-span');
+  });
+});
+
+describe('near-miss sigil lints (B1)', () => {
+  test('malformed region marker warns (bad-region); a well-formed one does not', () => {
+    expect(build(':: body ::\n::num\nhello').codes).toContain('bad-region'); // no spaces, no closing ::
+    expect(build(':: body ::\n:: num :: x').codes).toContain('bad-region'); // trailing content after ::
+    expect(build(':: body ::\nhello').codes).not.toContain('bad-region');
+    expect(build(':: title ::\nhello').codes).not.toContain('bad-region');
+  });
+
+  test('escaped \\:: never warns bad-region', () => {
+    expect(build(':: body ::\n\\:: title ::\ntext').codes).not.toContain('bad-region');
+  });
+
+  test('broken span syntax warns (bad-span)', () => {
+    expect(build(':: body ::\n[text]{color}').codes).toContain('bad-span'); // missing leading dot
+    expect(build(':: body ::\n[text]{}').codes).toContain('bad-span'); // empty class list
+    expect(build(':: body ::\n[text]{.foo,.bar}').codes).toContain('bad-span'); // comma, not space-separated
+  });
+
+  test('valid spans and plain markdown links/refs never warn bad-span', () => {
+    expect(build(':: body ::\n[text]{.accent}').codes).not.toContain('bad-span');
+    expect(build(':: body ::\n[Link text](https://example.com)').codes).not.toContain('bad-span');
+    expect(build(':: body ::\n[1] a footnote-ish reference, not a span').codes).not.toContain('bad-span');
+    expect(build(':: body ::\n\\[x]{.xxlarge}').codes).not.toContain('bad-span'); // escaped span, intentional literal
   });
 });

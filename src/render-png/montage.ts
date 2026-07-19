@@ -50,8 +50,13 @@ export async function montageDeck(
     );
     await page.setContent(doc, { waitUntil: 'networkidle' });
     await page.evaluate(() => (document as any).fonts?.ready);
-    await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
-    await page.waitForFunction(() => (window as any).__slaideChartsReady === true, { timeout: 8000 }).catch(() => {});
+    // See render-png/shoot.ts's shootHtml: gated on the same chart-lib signal (chart-free decks
+    // never define window.__slaideCharts, so the wait would just burn the timeout for nothing),
+    // and the 3-arg waitForFunction form (the 2-arg form silently drops the 8000ms cap).
+    if (doc.includes('id="sl-mermaid-lib"') || doc.includes('id="sl-echart-lib"')) {
+      await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
+      await page.waitForFunction(() => (window as any).__slaideChartsReady === true, undefined, { timeout: 8000 }).catch(() => {});
+    }
     await page.waitForTimeout(400);
 
     // Capture each slide (builds settled) as a light JPEG, then tile + encode in one canvas.

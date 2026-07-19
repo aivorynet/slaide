@@ -51,3 +51,67 @@ test('first slide images load eagerly; later slides lazily', () => {
   expect(h).toContain('loading="eager"'); // slide 0
   expect(h).toContain('loading="lazy"'); // slide 1
 });
+
+// AI-authored masters sometimes put a bare asset URL in `chrome.logo` (meant as an image
+// reference) instead of markup — without wrapping it renders as literal on-slide text.
+function htmlWithLogo(logo: string) {
+  const master: Master = { ...MASTER, chrome: { logo } };
+  return renderHtml(compile(parseDeck(`---\nt: t\n---\nlayout: cover\n---\n# Hi`), master), { mode: 'web' });
+}
+
+test('chrome.logo: a bare asset URL is auto-wrapped in <img>, not rendered as literal text', () => {
+  const h = htmlWithLogo('/api/slaide/assets/1234-uuid/raw');
+  expect(h).toContain('<img src="/api/slaide/assets/1234-uuid/raw" alt="">');
+  expect(h).not.toContain('>/api/slaide/assets/1234-uuid/raw<'); // not shown as literal text
+});
+
+test('chrome.logo: an absolute https URL is also auto-wrapped', () => {
+  const h = htmlWithLogo('https://cdn.example.com/logo.png');
+  expect(h).toContain('<img src="https://cdn.example.com/logo.png" alt="">');
+});
+
+test('chrome.logo: existing markup (svg/img) passes through unchanged', () => {
+  const svg = '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
+  const h = htmlWithLogo(svg);
+  expect(h).toContain(`<div class="sl-logo sl-logo-top-left">${svg}</div>`);
+});
+
+test('chrome.logo: plain text (a brand wordmark) passes through unchanged', () => {
+  const h = htmlWithLogo('Acme');
+  expect(h).toContain('<div class="sl-logo sl-logo-top-left">Acme</div>');
+});
+
+// { dark, light } logo: picked per slide by its resolved ground (background + variant),
+// not by layout/variant NAME — so it also works for a variant nobody named "dark"/"light".
+const GROUND_MASTER: Master = {
+  name: 'tm',
+  canvas: { aspect: '16:9', width: 1280, height: 720 },
+  colors: { roles: { background: '#0B0B12' } }, // dark ground by default
+  variants: { paper: { roles: { background: '#FFFFFF' } } }, // arbitrarily named light variant
+  layouts: { cover: { areas: ['title'], rows: '1fr', slots: { title: { type: 'title' } } } },
+  // NB: class names deliberately avoid "logo-dark"/"logo-light" — those collide with an
+  // unrelated built-in CSS selector (`.sl-img.logo-dark` etc., for inline markdown images).
+  chrome: { logo: { dark: '<svg class="brandmark-dark"/>', light: '<svg class="brandmark-light"/>' } },
+};
+
+function irWithGround(src: string) {
+  return compile(parseDeck(src), GROUND_MASTER);
+}
+
+test('chrome.logo {dark,light}: dark ground (default master background) picks the dark mark', () => {
+  const h = renderHtml(irWithGround(`---\nt: t\n---\nlayout: cover\n---\n# Hi`), { mode: 'web' });
+  expect(h).toContain('brandmark-dark');
+  expect(h).not.toContain('brandmark-light');
+});
+
+test('chrome.logo {dark,light}: a light-ground variant picks the light mark, by resolved colour not variant name', () => {
+  const h = renderHtml(irWithGround(`---\nt: t\n---\nlayout: cover\nvariant: paper\n---\n# Hi`), { mode: 'web' });
+  expect(h).toContain('brandmark-light');
+  expect(h).not.toContain('brandmark-dark');
+});
+
+test('chrome.logo {dark,light}: one key given is used regardless of ground', () => {
+  const master: Master = { ...GROUND_MASTER, chrome: { logo: { dark: '<svg class="brandmark-dark"/>' } } };
+  const h = renderHtml(compile(parseDeck(`---\nt: t\n---\nlayout: cover\nvariant: paper\n---\n# Hi`), master), { mode: 'web' });
+  expect(h).toContain('brandmark-dark'); // only key defined, used on the light-ground slide too
+});

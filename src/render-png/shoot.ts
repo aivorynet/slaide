@@ -28,6 +28,12 @@ export interface ShootOptions {
   /** A pooled Chromium browser to reuse (engine-service). When set it is NOT closed here;
    *  when omitted, a throwaway browser is launched and closed for this call (CLI path). */
   browser?: import('playwright').Browser;
+  /** Capture only this 0-based slide index instead of every slide in the deck — the
+   *  single-slide "look" fast path (engine-server's shootSlide). Page setup / networkidle /
+   *  font / chart-settle waits still run once as before; only the per-slide show+screenshot
+   *  loop is trimmed to one iteration. Returns a single-element array, so callers that don't
+   *  set this (montage, CLI `shoot`) are completely unaffected. */
+  only?: number;
 }
 
 async function loadPlaywright(): Promise<typeof import('playwright')> {
@@ -59,6 +65,9 @@ export async function shootHtml(html: string, ir: DeckIR, opts: ShootOptions = {
   const tag = opts.tag ?? 'slide';
   const fmt = opts.format ?? 'png';
   const quality = Math.max(1, Math.min(100, opts.quality ?? 82));
+  if (opts.only != null && (opts.only < 0 || opts.only >= ir.slides.length)) {
+    throw new Error(`shoot: slide ${opts.only} out of range (deck has ${ir.slides.length})`);
+  }
   mkdirSync(outDir, { recursive: true });
 
   const { chromium } = await loadPlaywright();
@@ -74,16 +83,26 @@ export async function shootHtml(html: string, ir: DeckIR, opts: ShootOptions = {
     }
     await page.setContent(doc, { waitUntil: 'networkidle' });
     await page.evaluate(() => (document as any).fonts?.ready);
-    // Render all charts (lazy in the runtime) and wait until they settle so every
-    // captured frame includes them. No-op + immediate for chart-free decks.
-    await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
-    await page
-      .waitForFunction(() => (window as any).__slaideChartsReady === true, { timeout: 8000 })
-      .catch(() => {});
+    // Render all charts (lazy in the runtime) and wait until they settle so every captured
+    // frame includes them. Chart-free decks never get the boot script at all (html.ts's
+    // chartBlock omits it when there's no mermaid/echart markup), so window.__slaideCharts
+    // stays undefined and the ready flag never flips — gate on the same signal so those decks
+    // skip the wait instead of always burning it for nothing (this was the dominant fixed cost
+    // of every shoot/montage call). Also note the 3-arg form: waitForFunction(fn, arg, options) —
+    // passing options positionally as `arg` (the old 2-arg call) is silently accepted, so the
+    // "8000ms" cap never took effect and every wait ran out Playwright's real default instead.
+    const hasCharts = doc.includes('id="sl-mermaid-lib"') || doc.includes('id="sl-echart-lib"');
+    if (hasCharts) {
+      await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
+      await page
+        .waitForFunction(() => (window as any).__slaideChartsReady === true, undefined, { timeout: 8000 })
+        .catch(() => {});
+    }
     await page.waitForTimeout(400);
 
     const paths: string[] = [];
-    for (let i = 0; i < ir.slides.length; i++) {
+    const indices = opts.only != null ? [opts.only] : ir.slides.map((_, i) => i);
+    for (const i of indices) {
       // window.slaide.show(n) reveals slide n with every build settled (shown).
       await page.evaluate((n) => (window as any).slaide.show(n), i);
       await page.waitForTimeout(180);

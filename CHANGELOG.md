@@ -6,6 +6,29 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-19
+
+Folds in the unpublished 1.1.0 (2026-07-11).
+
+### Added
+
+- Masters can declare an optional **`brand`** section — a locked brand identity (name, palette, fonts, logo) that the theme's colour roles derive from, so hosted AI edits keep the brand fixed while still letting the user override it.
+- **`unknown-slot` is now a hard error** with a fix-it message naming the layout's real slots — a misrouted `:: region ::` no longer drops its content silently.
+
+### Changed
+
+- **Cover and outro/closing slides no longer show a page number.** Layouts named `cover`/`outro`/`closing`/`thanks`/`end` have their footer suppressed automatically unless the slide or layout sets `chrome:` explicitly.
+- Present-to-screen reworked (v2): more reliable second-window handoff, autosave flush on present.
+- Theme CSS variables moved to a namespaced form to avoid collisions when a render is embedded in a host page.
+- Slide/layout `variant:` references are validated instead of silently resolving to nothing.
+
+### Fixed
+
+- **Phantom leading slide:** the parser now skips empty `---` segments instead of rendering them as a blank first slide.
+- PDF/PPTX export fidelity — images, backgrounds, and fonts now export consistently.
+- The compiler no longer crashes on a malformed gradient `background:` entry; it degrades with a diagnostic.
+- The presentation render is editing-surface-free again: an editor identifier had leaked into the runtime script (caught by the render leak test).
+
 ## [1.0.5] - 2026-07-08
 
 ### Fixed

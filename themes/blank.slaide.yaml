@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://getslaide.com/schema/v1.json
+# A deliberately bare placeholder: white canvas, Open Sans, a handful of layouts.
+# It is NOT a design — the online default so a fresh deck reads as neutral and the AI
+# must author a real theme from scratch. Keep it minimal (few options on purpose).
+schema: slaide/1
+name: blank
+description: A minimal white placeholder theme (Open Sans). Meant to be replaced by a real theme.
+
+canvas: { aspect: "16:9", width: 1280, height: 720 }
+
+fonts:
+  sans:    { family: "Open Sans", provider: google, weights: [400, 600, 700] }
+  display: { family: "Open Sans", provider: google, weights: [400, 600, 700] }
+
+typeScale:
+  base: "24px"
+  ratio: 1.2
+  steps: { h1: 3, h2: 2, h3: 1, h4: 0, body: 0, caption: -1 }
+
+colors:
+  palette:
+    paper:  "#FFFFFF"
+    ink:    "#1A1A1A"
+    muted:  "#6B7280"
+    accent: "#3B5B8C"
+  roles:
+    background: "{palette.paper}"
+    surface:    "{palette.paper}"
+    text:       "{palette.ink}"
+    heading:    "{palette.ink}"
+    accent:     "{palette.accent}"
+    link:       "{palette.accent}"
+    muted:      "{palette.muted}"
+
+layouts:
+  cover:
+    align: center
+    areas: ["title", "subtitle"]
+    rows: "auto auto"
+    slots:
+      title:    { type: title,    style: { size: h1, weight: "700" } }
+      subtitle: { type: subtitle, style: { size: h3, color: muted } }
+
+  title-content:
+    areas: ["title", "body"]
+    rows: "auto 1fr"
+    slots:
+      title: { type: title, style: { size: h2, weight: "700" } }
+      body:  { type: body }
+
+  section:
+    align: center
+    areas: ["title"]
+    rows: "1fr"
+    slots:
+      title: { type: title, style: { size: h1, weight: "700", align: center } }
+
+  blank:
+    areas: ["body"]
+    rows: "1fr"
+    slots:
+      body: { type: body }

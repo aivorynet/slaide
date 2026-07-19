@@ -43,11 +43,32 @@ export async function renderPdfFromHtml(
     await page.setContent(html, { waitUntil: 'networkidle' });
     // Ensure web fonts are ready before printing.
     await page.evaluate(() => (document as any).fonts?.ready);
-    // Render charts (lazy) and wait until they settle so they appear in the PDF.
-    await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
+    // Ensure every image has finished loading (or failed) before printing — print mode marks
+    // them eager (see renderSlidePrint), but 'networkidle' can fire while decodes/late fetches
+    // are still in flight. Capped at 15s so one dead URL cannot hang the export.
     await page
-      .waitForFunction(() => (window as any).__slaideChartsReady === true, { timeout: 8000 })
+      .evaluate(() => {
+        const pending = Array.from(document.images)
+          .filter((im) => !im.complete)
+          .map(
+            (im) =>
+              new Promise<void>((res) => {
+                im.addEventListener('load', () => res(), { once: true });
+                im.addEventListener('error', () => res(), { once: true });
+              }),
+          );
+        if (!pending.length) return;
+        return Promise.race([Promise.all(pending).then(() => undefined), new Promise<void>((res) => setTimeout(res, 15000))]);
+      })
       .catch(() => {});
+    // Render charts (lazy) and wait until they settle so they appear in the PDF. Gated on the
+    // chart-lib signal + 3-arg waitForFunction form — see render-png/shoot.ts's shootHtml.
+    if (html.includes('id="sl-mermaid-lib"') || html.includes('id="sl-echart-lib"')) {
+      await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
+      await page
+        .waitForFunction(() => (window as any).__slaideChartsReady === true, undefined, { timeout: 8000 })
+        .catch(() => {});
+    }
     await page.pdf({
       path: out,
       preferCSSPageSize: true,

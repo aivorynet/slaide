@@ -58,13 +58,22 @@ interface TextBox {
 interface RegionBox {
   shapes: ShapeBox[];
   textBoxes: TextBox[];
-  imgs?: { x: number; y: number; w: number; h: number; src: string }[];
+  // `fit` = computed object-fit (drives pptxgenjs sizing). `cap` is a temp DOM marker so Node
+  // can element-screenshot the rendered <img> when fetching its src fails; `data` is the
+  // resolved data-URI payload; `shot` marks a screenshot fallback (already cropped — no sizing).
+  imgs?: { x: number; y: number; w: number; h: number; src: string; fit?: string; cap?: string; data?: string; shot?: boolean }[];
   // Charts / inline SVG, captured as transparent PNGs (their internal <text> must not be
   // walked into text runs). `cap` is a temp DOM marker used to element-screenshot in Node.
   shots?: { x: number; y: number; w: number; h: number; cap: string; data?: string }[];
 }
 interface SlideData {
-  bg: { type: 'color'; color: string } | { type: 'image'; src: string } | null;
+  // 'raster': a gradient or remote-url() background — Node screenshots the active slide's bg
+  // layers (content hidden) into `data` so the PPTX background matches the render exactly.
+  bg:
+    | { type: 'color'; color: string }
+    | { type: 'image'; src: string }
+    | { type: 'raster'; data?: string }
+    | null;
   regions: RegionBox[];
   transition: string; // slide transition name from the IR (e.g. fade, slide-left, morph)
   transitionMs?: number; // per-slide --transition-ms override, if any
@@ -127,10 +136,12 @@ const EXTRACT = String.raw`
       var cs = getComputedStyle(probes[i]);
       if(cs.backgroundImage && cs.backgroundImage.indexOf('url(')===0){
         var m = cs.backgroundImage.match(/url\(["']?(.+?)["']?\)/);
-        if(m) bg = { type:'image', src: m[1] };
+        // data: images embed directly; remote url() backgrounds get rasterised in Node (a
+        // screenshot of the bg layers) so cover/position/dim survive instead of being dropped.
+        if(m) bg = m[1].indexOf('data:')===0 ? { type:'image', src: m[1] } : { type:'raster' };
       } else if(cs.backgroundImage && cs.backgroundImage.indexOf('gradient')>=0){
-        var gc = firstGradientColor(cs.backgroundImage);
-        if(gc) bg = { type:'color', color: gc };
+        // gradients rasterise too — a first-stop colour approximation loses the gradient.
+        bg = { type:'raster' };
       } else {
         var c = rgbToHex(cs.backgroundColor);
         if(c) bg = { type:'color', color: c };
@@ -266,12 +277,19 @@ const EXTRACT = String.raw`
           borderColor: sbc || undefined, borderAlpha: sbc ? alphaOf(scs.borderTopColor) : 1,
           borderWidth: sbw || undefined, radius: (parseFloat(scs.borderTopLeftRadius)||0) || undefined });
       });
-      // images (image slots + any placed images)
+      // images (image slots + any placed images) — record object-fit (drives pptxgenjs sizing)
+      // and tag each with a data-sl-cap marker so Node can element-screenshot the rendered <img>
+      // (while its slide is active) if fetching the src fails.
       var imgs = [];
       region.querySelectorAll('img').forEach(function(im){
         if(im.closest('.sl-chart, .sl-svg')) return;
         var ib = box(im);
-        if(ib.w>1 && ib.h>1 && im.src) imgs.push({ x:ib.x, y:ib.y, w:ib.w, h:ib.h, src: im.src });
+        if(ib.w>1 && ib.h>1 && im.src){
+          var icap = String(capId++);
+          im.setAttribute('data-sl-cap', icap);
+          imgs.push({ x:ib.x, y:ib.y, w:ib.w, h:ib.h, src: im.src,
+            fit: getComputedStyle(im).objectFit || undefined, cap: icap });
+        }
       });
       // charts (mermaid/echarts) + inline svg → tag each for an element screenshot in Node
       var shots = [];
@@ -318,6 +336,53 @@ function mapAlign(a: string): 'left' | 'center' | 'right' | 'justify' {
 
 const PX_PER_IN = 96;
 
+// ---- remote image resolution (fetch-first, screenshot fallback) -----------------------------
+// Hosted decks reference http(s) image URLs (org asset store, Unsplash, ...). pptxgenjs needs
+// bytes, so fetch each src once per process (module-level cache — repeated exports and repeated
+// uses of one asset pay one fetch) and fall back to an element screenshot of the rendered <img>
+// when the fetch fails (auth-walled CDN, dead URL). Never fails the export.
+const IMG_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const IMG_FETCH_TIMEOUT_MS = 30_000;
+const IMG_FETCH_MAX_BYTES = 20 * 1024 * 1024;
+const imgFetchCache = new Map<string, Promise<{ data: string } | null>>();
+
+function sniffImageMime(buf: Buffer): string | null {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 6 && buf.subarray(0, 4).toString('latin1') === 'GIF8') return 'image/gif';
+  if (buf.length >= 12 && buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  const head = buf.subarray(0, 256).toString('utf8').trimStart().toLowerCase();
+  if (head.startsWith('<svg') || head.startsWith('<?xml')) return 'image/svg+xml';
+  return null;
+}
+
+function fetchImageData(src: string): Promise<{ data: string } | null> {
+  let p = imgFetchCache.get(src);
+  if (!p) {
+    p = (async () => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), IMG_FETCH_TIMEOUT_MS);
+      try {
+        const r = await fetch(src, { headers: { 'User-Agent': IMG_UA }, signal: ctrl.signal });
+        if (!r.ok) return null;
+        const buf = Buffer.from(await r.arrayBuffer());
+        if (!buf.length || buf.length > IMG_FETCH_MAX_BYTES) return null;
+        const ct = (r.headers.get('content-type') || '').split(';')[0].trim();
+        const mime = ct.startsWith('image/') ? ct : sniffImageMime(buf);
+        if (!mime) return null; // not an image payload — let the screenshot fallback handle it
+        return { data: `data:${mime};base64,${buf.toString('base64')}` };
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(t);
+      }
+    })();
+    imgFetchCache.set(src, p);
+  }
+  return p;
+}
+
 export async function exportPptx(
   deckPath: string,
   opts: PptxOptions,
@@ -340,11 +405,14 @@ export async function exportPptx(
     );
     await page.setContent(doc, { waitUntil: 'networkidle' });
     await page.evaluate(() => (document as any).fonts?.ready);
-    // Render charts (lazy) and wait until they settle before measuring the DOM.
-    await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
-    await page
-      .waitForFunction(() => (window as any).__slaideChartsReady === true, { timeout: 8000 })
-      .catch(() => {});
+    // Render charts (lazy) and wait until they settle before measuring the DOM. Gated on the
+    // chart-lib signal + 3-arg waitForFunction form — see render-png/shoot.ts's shootHtml.
+    if (doc.includes('id="sl-mermaid-lib"') || doc.includes('id="sl-echart-lib"')) {
+      await page.evaluate(() => (window as any).__slaideCharts?.renderAll());
+      await page
+        .waitForFunction(() => (window as any).__slaideChartsReady === true, undefined, { timeout: 8000 })
+        .catch(() => {});
+    }
     await page.waitForTimeout(300);
     slidesData = [];
     for (let i = 0; i < ir.slides.length; i++) {
@@ -367,6 +435,45 @@ export async function exportPptx(
           const png = await handle.screenshot({ omitBackground: true });
           shot.data = 'data:image/png;base64,' + Buffer.from(png).toString('base64');
         }
+      }
+      // Resolve each image to bytes while its slide is still active: data: srcs pass through,
+      // http(s) srcs are fetched (module-level cache), and a failed fetch falls back to an
+      // element screenshot of the rendered <img> (same pattern as the chart shots above).
+      for (const region of data.regions) {
+        for (const im of region.imgs ?? []) {
+          if (im.src.startsWith('data:')) continue;
+          if (/^https?:/i.test(im.src)) {
+            const fetched = await fetchImageData(im.src);
+            if (fetched) { im.data = fetched.data; continue; }
+          }
+          if (!im.cap) continue;
+          const handle = await page.$(`.sl-slide.sl-active [data-sl-cap="${im.cap}"]`);
+          if (!handle) continue;
+          try {
+            const png = await handle.screenshot({ omitBackground: true });
+            im.data = 'data:image/png;base64,' + Buffer.from(png).toString('base64');
+            im.shot = true; // already cropped to its rendered box — emit without sizing
+          } catch { /* image dropped from the export rather than failing it */ }
+        }
+      }
+      // Raster backgrounds (gradient or remote-url()): hide the content layers, screenshot the
+      // active slide (bg layers only), restore. JPEG q90 — backgrounds are opaque and large.
+      if (data.bg?.type === 'raster') {
+        await page.evaluate(() => {
+          const st = document.createElement('style');
+          st.id = 'sl-pptx-bg-shot';
+          st.textContent =
+            '.sl-slide.sl-active .sl-layer-content,.sl-slide.sl-active .sl-layer-chrome,.sl-slide.sl-active .sl-layer-free{visibility:hidden !important}';
+          document.head.appendChild(st);
+        });
+        try {
+          const slideEl = await page.$('.sl-slide.sl-active');
+          if (slideEl) {
+            const jpg = await slideEl.screenshot({ type: 'jpeg', quality: 90 });
+            data.bg.data = 'data:image/jpeg;base64,' + Buffer.from(jpg).toString('base64');
+          }
+        } catch { /* background falls back to none rather than failing the export */ }
+        await page.evaluate(() => document.getElementById('sl-pptx-bg-shot')?.remove());
       }
       data.transition = ir.slides[i].transition;
       const tms = ir.slides[i].vars['--transition-ms'];
@@ -398,6 +505,7 @@ export async function exportPptx(
     const slide = pptx.addSlide();
     if (data.bg?.type === 'color') slide.background = { color: data.bg.color };
     else if (data.bg?.type === 'image' && data.bg.src.startsWith('data:')) slide.background = { data: stripData(data.bg.src) };
+    else if (data.bg?.type === 'raster' && data.bg.data) slide.background = { data: stripData(data.bg.data) };
 
     // Regions are walked in DOM order = paint order, so shapes/images/text stack correctly.
     const transp = (a?: number) => (a !== undefined && a < 1 ? Math.round((1 - a) * 100) : undefined);
@@ -413,9 +521,19 @@ export async function exportPptx(
         slide.addShape(s.radius ? ('roundRect' as any) : ('rect' as any), shapeOpts);
       }
 
-      // 2. images (image slots + placed images)
+      // 2. images (image slots + placed images) — `data` is the fetched/screenshotted payload,
+      //    data: srcs pass straight through. object-fit maps to pptxgenjs sizing so a cover-
+      //    cropped photo exports cropped instead of squashed; screenshot fallbacks are already
+      //    cropped to their rendered box, so they get no sizing.
       for (const im of r.imgs ?? []) {
-        if (im.src.startsWith('data:')) slide.addImage({ data: stripData(im.src), x: inch(im.x), y: inch(im.y), w: inch(im.w), h: inch(im.h) });
+        const payload = im.data ?? (im.src.startsWith('data:') ? im.src : null);
+        if (!payload) continue;
+        const imgOpts: any = { data: stripData(payload), x: inch(im.x), y: inch(im.y), w: inch(im.w), h: inch(im.h) };
+        if (!im.shot) {
+          if (im.fit === 'cover') imgOpts.sizing = { type: 'cover', w: inch(im.w), h: inch(im.h) };
+          else if (im.fit === 'contain') imgOpts.sizing = { type: 'contain', w: inch(im.w), h: inch(im.h) };
+        }
+        slide.addImage(imgOpts);
       }
 
       // 2b. charts / inline svg captured as transparent PNGs

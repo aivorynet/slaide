@@ -97,16 +97,34 @@ export interface ChromeBand {
 export interface ChromeDef {
   header?: ChromeBand;
   footer?: ChromeBand;
-  /** Raw inline SVG or HTML for a logo mark. */
-  logo?: string;
+  /** Raw inline SVG/HTML/URL for a logo mark. A single string is used on every slide
+   *  (unchanged); `{ dark, light }` picks per slide by its resolved ground — `dark` = the
+   *  mark legible ON a dark background, `light` = ON a light background. Given only one
+   *  key, that mark is used on every slide regardless of ground. */
+  logo?: string | { dark?: string; light?: string };
   /** Logo corner: top-left | top-right | bottom-left | bottom-right. */
   logoPos?: string;
+}
+
+/** Brand identity metadata a deck is branded for. The master's own `colors:`/`fonts:` ARE
+ *  the brand (no separate palette/fonts copy here — that duplication was a mistake); this
+ *  block just names/locks it. Set/overridden by the user only — the hosted agent treats a
+ *  `locked` brand as read-only while it works. */
+export interface MasterBrand {
+  /** Brand / company name this deck is branded for. */
+  name?: string;
+  /** Brand logo: raw inline SVG/HTML mark or an asset reference. */
+  logo?: string;
+  /** When true the AI must not alter this block mid-run; the user can still override it. */
+  locked?: boolean;
 }
 
 export interface Master {
   schema?: string;
   name: string;
   description?: string;
+  /** Immutable brand identity (see MasterBrand). Metadata + lock; roles still drive the CSS. */
+  brand?: MasterBrand;
   canvas?: { aspect?: string; width?: number; height?: number };
   fonts?: Record<string, MasterFont>;
   typeScale?: TypeScale;

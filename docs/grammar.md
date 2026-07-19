@@ -64,6 +64,7 @@ content-line    = markdown-line ;                  (* CommonMark, with §5–§7
 ```
 
 - `region-marker` routes following content into the named slot until the next marker or separator. Content before any marker → the layout's main slot.
+- A line starting `::` that is **not** a well-formed `region-marker` (e.g. `::name`, no spaces, or trailing content after the closing `::`) emits a `bad-region` warning and is kept as literal content — it is not silently dropped.
 - `note` (a `???` line and its continuation until a blank line) is a speaker note: shown in the presenter overlay, omitted from audience view and PDF.
 
 ### 4.1 Build sigil
@@ -100,7 +101,7 @@ Classes chain (`[40-80%]{.grad-purple .huge}`). Resolution (see themes.md → *M
 - `.xs .sm .md .lg .xl .xxl .huge` → font-size (type-scale steps `small`…`stat`).
 - `.bold`, `.muted`, and image utilities `.round`, `.cover`, `.shadow`.
 
-A class that is **none** of the above (e.g. a typo like `.xxlarge` or `.grad-teel`) emits an `unknown-class` / `unknown-gradient` warning rather than silently degrading to inert/invisible CSS. Run `slaide slots <deck>` to print the legal slot, colour, gradient and size names for a deck's master; `slaide validate <deck> [--strict]` surfaces all diagnostics (`--strict` makes warnings fail).
+A class that is **none** of the above (e.g. a typo like `.xxlarge` or `.grad-teel`) emits an `unknown-class` / `unknown-gradient` warning rather than silently degrading to inert/invisible CSS. A `{…}` brace that isn't a valid dot-class list at all (missing the leading dot, empty, or otherwise malformed) emits a `bad-span` warning instead — never on a plain link `[text](url)` or a `[1]`-style reference, which don't have this shape. Run `slaide slots <deck>` to print the legal slot, colour, gradient and size names for a deck's master; `slaide validate <deck> [--strict]` surfaces all diagnostics (`--strict` makes warnings fail).
 
 ## 6. Image & attribute brace
 

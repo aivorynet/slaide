@@ -45,10 +45,35 @@ export function loadMaster(path: string): Master {
   return parseMaster(raw);
 }
 
+/** The bundle themes directory (holds aurora + blank + any shipped themes). */
+function bundleThemesDir(): string {
+  return dirname(DEFAULT_MASTER);
+}
+
+/** Resolve the master used when a deck names none. Honors `SLAIDE_DEFAULT_MASTER` (a bare
+ *  bundled theme name, e.g. `blank`) so the hosted/online engine can start decks from a
+ *  neutral placeholder without affecting the CLI/desktop default (aurora, unset). */
+export function resolveDefaultMasterPath(): string {
+  const envRef = process.env.SLAIDE_DEFAULT_MASTER?.trim();
+  if (envRef && /^[\w-]+$/.test(envRef)) {
+    const bundled = resolve(bundleThemesDir(), `${envRef}.slaide.yaml`);
+    if (existsSync(bundled)) return bundled;
+  }
+  return existsSync(DEFAULT_MASTER) ? DEFAULT_MASTER : '';
+}
+
+/** True when a resolved master path is one of the shared, read-only bundle themes
+ *  (aurora, blank, …). Such a master must never be mutated in place — a theme edit
+ *  materializes a deck-local copy instead of overwriting the shared file. */
+export function isBundledMasterPath(masterPath: string): boolean {
+  if (!masterPath) return false;
+  return dirname(resolve(masterPath)) === bundleThemesDir();
+}
+
 /** Resolve the master path referenced in deck headmatter, with a bundled default. */
 export function resolveMasterPath(headmatter: Record<string, unknown>, deckDir: string): string {
   const ref = typeof headmatter.master === 'string' ? headmatter.master : null;
-  if (!ref) return existsSync(DEFAULT_MASTER) ? DEFAULT_MASTER : '';
+  if (!ref) return resolveDefaultMasterPath();
   const abs = resolve(deckDir, ref);
   if (existsSync(abs)) return abs;
   // A bare name (no path or extension) may be a bundled theme, e.g. `master: aurora` — the
@@ -193,8 +218,8 @@ export { exportPptx } from './export-pptx/pptx.js';
 export type { PptxOptions } from './export-pptx/pptx.js';
 export { embedFonts } from './export-pptx/embed-fonts.js';
 export { exportKeynote, keynoteAvailable } from './export-keynote/keynote.js';
-export { optimizeExportHtml, optimizeImageBuffers } from './optimize/export-optimize.js';
-export type { ImageOpts } from './optimize/export-optimize.js';
+export { optimizeExportHtml, optimizeImageBuffers, chartHash, injectBakedCharts } from './optimize/export-optimize.js';
+export type { ImageOpts, ChartCache } from './optimize/export-optimize.js';
 export { listThemes, getSpec, getThemeSchema } from './assets.js';
 export { importDeck } from './import/index.js';
 export { openDeck, packDeck, unpackDeck, repackContainer, isSlaidec } from './container.js';

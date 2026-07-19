@@ -173,6 +173,98 @@ test('contrast lint is gradient-aware: white text on a light gradient stop warns
   expect(out.warnings.map((w) => w.code)).toContain('low-contrast');
 });
 
+test('overlapping-slots: a layout whose grid never names any of its slots warns (all slots share the default cell)', () => {
+  const m: Master = {
+    name: 'ov1',
+    layouts: {
+      // AI-authored mistake: the grid's only named area is the layout's own name, so
+      // none of `title`/`body`/`image` match — all three default-stack together.
+      'image-right': {
+        areas: ['image-right'],
+        slots: { title: { type: 'title' }, body: { type: 'body' }, image: { type: 'image' } },
+      },
+    },
+  };
+  const out = compile(parseDeck('---\ntitle: t\n---\nlayout: image-right\n---\nHi'), m);
+  const w = out.warnings.find((x) => x.code === 'overlapping-slots');
+  expect(w).toBeDefined();
+  expect(w!.message).toBe(
+    "layout 'image-right': slots title, body, image share one grid cell — assign each slot its own area in the grid"
+  );
+});
+
+test('overlapping-slots: a well-formed multi-area layout does not warn', () => {
+  const m: Master = {
+    name: 'ov2',
+    layouts: {
+      good: { areas: ['title', 'body'], slots: { title: { type: 'title' }, body: { type: 'body' } } },
+    },
+  };
+  const out = compile(parseDeck('---\ntitle: t\n---\nlayout: good\n---\nHi'), m);
+  expect(out.warnings.map((w) => w.code)).not.toContain('overlapping-slots');
+});
+
+test('overlapping-slots: a single slot missing from grid-template-areas still warns', () => {
+  const m: Master = {
+    name: 'ov3',
+    layouts: {
+      // `image` has no matching cell — it defaults onto whatever slot claims the leftover space.
+      partial: {
+        areas: ['title body'],
+        slots: { title: { type: 'title' }, body: { type: 'body' }, image: { type: 'image' } },
+      },
+    },
+  };
+  const out = compile(parseDeck('---\ntitle: t\n---\nlayout: partial\n---\nHi'), m);
+  const w = out.warnings.find((x) => x.code === 'overlapping-slots');
+  expect(w).toBeDefined();
+  expect(w!.message).toBe(
+    "layout 'partial': slot 'image' has no matching area in the grid-template-areas — it will default-stack onto another slot's cell"
+  );
+});
+
+test('unknown-var: a model-authored var(--size-stat) with no matching typeScale step warns and gets a fallback', () => {
+  const m: Master = {
+    name: 'uv1',
+    typeScale: { base: '20px', ratio: 1.25, steps: { h1: 4, body: 0 } }, // largest --size-* is --size-h1 (48.83px)
+    layouts: { body: { areas: ['b'], slots: { b: { type: 'body' } } } },
+  };
+  const src = '---\ntitle: t\n---\nlayout: body\n---\n<span style="font-size:var(--size-stat);font-weight:800">20×</span>';
+  const out = compile(parseDeck(src), m);
+  const w = out.warnings.find((x) => x.code === 'unknown-var');
+  expect(w).toBeDefined();
+  expect(w!.message).toBe(
+    'undefined CSS variable var(--size-stat) — define it in the master (e.g. typeScale.steps.stat) or use an existing token',
+  );
+  // largest defined --size-* (h1 = 20 * 1.25^4 = 48.83px) becomes the literal fallback,
+  // so the "big stat" still renders big instead of falling back to nothing.
+  expect(out.slides[0].regions[0].html).toContain('var(--size-stat, 48.83px)');
+});
+
+test('unknown-var: a deck using only defined vars gets no warning and no rewrite', () => {
+  const m: Master = {
+    name: 'uv2',
+    typeScale: { base: '20px', ratio: 1.25, steps: { h1: 4, body: 0 } },
+    layouts: { body: { areas: ['b'], slots: { b: { type: 'body' } } } },
+  };
+  const src = '---\ntitle: t\n---\nlayout: body\n---\n<span style="font-size:var(--size-h1)">Hi</span>';
+  const out = compile(parseDeck(src), m);
+  expect(out.warnings.map((w) => w.code)).not.toContain('unknown-var');
+  expect(out.slides[0].regions[0].html).toContain('var(--size-h1)');
+  expect(out.slides[0].regions[0].html).not.toContain('var(--size-h1,');
+});
+
+test('unknown-var: an existing explicit fallback is left untouched (no double-fallback, no warning)', () => {
+  const m: Master = {
+    name: 'uv3',
+    layouts: { body: { areas: ['b'], slots: { b: { type: 'body' } } } },
+  };
+  const src = '---\ntitle: t\n---\nlayout: body\n---\n<span style="margin:var(--x, 1em)">Hi</span>';
+  const out = compile(parseDeck(src), m);
+  expect(out.warnings.map((w) => w.code)).not.toContain('unknown-var');
+  expect(out.slides[0].regions[0].html).toContain('var(--x, 1em)');
+});
+
 test('non-Google, non-system font warns (won\'t embed → PowerPoint substitutes)', () => {
   const base = {
     name: 'fm',

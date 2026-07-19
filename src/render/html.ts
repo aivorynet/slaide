@@ -13,6 +13,8 @@ function backgroundCss(bg: BackgroundDef | null): string {
   if (!bg) return '';
   if (bg.type === 'solid') return `background:${bg.color};`;
   if (bg.type === 'gradient') {
+    // Model-authored masters can ship a gradient without `stops` — degrade, never crash.
+    if (!Array.isArray(bg.stops) || bg.stops.length === 0) return '';
     const angle = bg.angle ?? 135;
     return `background:linear-gradient(${angle}deg, ${bg.stops.join(', ')});`;
   }
@@ -92,7 +94,11 @@ function renderSlideWeb(slide: SlideIR): string {
 }
 
 function renderSlidePrint(slide: SlideIR): string {
-  return `<div class="sl-page sl-slide" style="${cssVars(slide.vars)}">${renderLayers(slide, true)}</div>`;
+  // Print is the PDF source: every page rasterises, so lazy images on later pages
+  // would never load and export blank. Load them all eagerly (web does this for
+  // slide 0 only — see renderSlideWeb).
+  const body = renderLayers(slide, true).replace(/loading="lazy"/g, 'loading="eager"');
+  return `<div class="sl-page sl-slide" style="${cssVars(slide.vars)}">${body}</div>`;
 }
 
 function cssVars(vars: Record<string, string>): string {

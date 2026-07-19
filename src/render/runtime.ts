@@ -46,11 +46,11 @@ export const RUNTIME_JS = String.raw`
   function scale(){
     var pres = isPresenting();
     var cs = getComputedStyle(document.documentElement);
-    var dl = pres ? 0 : cssVar(cs,'--sl-dock-left'), dr = pres ? 0 : cssVar(cs,'--sl-dock-right');
-    var dt = pres ? 0 : cssVar(cs,'--sl-dock-top');
+    var dl = pres ? 0 : cssVar(cs,'--slaide--dock-left'), dr = pres ? 0 : cssVar(cs,'--slaide--dock-right');
+    var dt = pres ? 0 : cssVar(cs,'--slaide--dock-top');
     // Bottom dock = chrome dock (bstrip/filmstrip, absolute) + notes reservation (independent), so
-    // the two writers never clobber each other. .sl-notes sits at --sl-dock-bottom (above the chrome).
-    var db = pres ? 0 : cssVar(cs,'--sl-dock-bottom') + cssVar(cs,'--sl-dock-notes');
+    // the two writers never clobber each other. .sl-notes sits at --slaide--dock-bottom (above the chrome).
+    var db = pres ? 0 : cssVar(cs,'--slaide--dock-bottom') + cssVar(cs,'--slaide--dock-notes');
     var vw = window.innerWidth - dl - dr, vh = window.innerHeight - dt - db;
     var fit = Math.min(vw/CW, vh/CH);
     var s = fit * zoomFactor;
@@ -150,17 +150,17 @@ export const RUNTIME_JS = String.raw`
   function toggle(sel){ var e=document.querySelector(sel); if(e) e.classList.toggle('sl-open'); updateChrome(); }
   var NOTES_H = 180;
   // Dock the notes panel BENEATH the slide (not floating over it). The panel is a fixed sibling;
-  // it reserves its own space via the INDEPENDENT --sl-dock-notes var (summed into the stage fit by
-  // scale()), and anchors at --sl-dock-bottom so it sits flush above the chrome dock (the editor
-  // filmstrip, or nothing). Keeping notes' reservation separate from --sl-dock-bottom means the
+  // it reserves its own space via the INDEPENDENT --slaide--dock-notes var (summed into the stage fit by
+  // scale()), and anchors at --slaide--dock-bottom so it sits flush above the chrome dock (the editor
+  // filmstrip, or nothing). Keeping notes' reservation separate from --slaide--dock-bottom means the
   // bstrip's absolute writes and the notes' toggle never clobber each other (no overlap on toggle).
   function setNotesOpen(open){
     var np = document.querySelector('.sl-notes');
     if(!np) return;
     if(open === np.classList.contains('sl-open')) return;   // already in the requested state
     var ds = document.documentElement.style;
-    if(open){ np.classList.add('sl-open'); ds.setProperty('--sl-dock-notes', NOTES_H + 'px'); }
-    else    { np.classList.remove('sl-open'); ds.setProperty('--sl-dock-notes', '0px'); }
+    if(open){ np.classList.add('sl-open'); ds.setProperty('--slaide--dock-notes', NOTES_H + 'px'); }
+    else    { np.classList.remove('sl-open'); ds.setProperty('--slaide--dock-notes', '0px'); }
     // innerHTML is populated by the updateChrome() call below (it fills .sl-notes when open).
     scale();
     updateChrome();
@@ -328,7 +328,9 @@ export const RUNTIME_JS = String.raw`
       case 'Escape':
         // Close any open overlay (help, etc.) directly; notes go through setNotesOpen so the
         // reserved bottom dock unwinds too. (Loop param is el; the outer e is the KeyboardEvent.)
-        document.querySelectorAll('.sl-open').forEach(function(el){ if(!el.classList.contains('sl-notes')) el.classList.remove('sl-open'); });
+        // A host surface (e.g. an editor pane) marks itself data-sl-pin to opt OUT of Esc-close —
+        // it owns its own lifecycle; the runtime knows nothing about what it is.
+        document.querySelectorAll('.sl-open').forEach(function(el){ if(!el.classList.contains('sl-notes') && !el.hasAttribute('data-sl-pin')) el.classList.remove('sl-open'); });
         setNotesOpen(false);
         break;
     }

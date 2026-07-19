@@ -55,11 +55,18 @@ export const KNOWN_SLIDE_KEYS = new Set([
   'title', 'author', 'company', 'date', 'subtitle',
 ]);
 
+// A line that looks like an attempted region marker (starts `::` then non-space)
+// but doesn't match REGION_RE — e.g. `::num` (no spaces) or `:: num :: x` (trailing
+// content). Used only to lint; REGION_RE itself still decides actual routing.
+const NEAR_MISS_REGION_RE = /^::\s*\S/;
+
 /** Split a slide body into regions and extract speaker notes. The `::` region
  *  markers, `??? notes`, and the build/blank-line splitting are all suppressed
  *  inside fenced code blocks (```/~~~) so a deck's own slaide source can be shown
- *  verbatim in a code sample without being parsed as structure. */
-function parseBody(text: string): { regions: ParsedRegion[]; notes: string | null } {
+ *  verbatim in a code sample without being parsed as structure. `warnings`/`line`
+ *  (if provided) collect a lint for a near-miss region marker that would otherwise
+ *  fall through silently as literal body text. */
+function parseBody(text: string, warnings?: Warning[], srcLine?: number): { regions: ParsedRegion[]; notes: string | null } {
   const lines = text.split('\n');
   const noteChunks: string[] = [];
   const kept: string[] = [];
@@ -129,6 +136,13 @@ function parseBody(text: string): { regions: ParsedRegion[]; notes: string | nul
       flush();
       current = { name: m[1], lines: [] };
     } else {
+      if (!inCode && warnings && NEAR_MISS_REGION_RE.test(line)) {
+        warnings.push({
+          code: 'bad-region',
+          message: `malformed region marker: '${line.trim()}' — expected ':: name ::' alone on its line`,
+          line: srcLine,
+        });
+      }
       current.lines.push(line);
     }
   }
@@ -169,6 +183,13 @@ export function parseDeck(content: string): ParsedDeck {
   const rest = segments.slice(idx).filter((s, i, arr) => !(i === arr.length - 1 && s.text.trim() === ''));
   for (let i = 0; i < rest.length; ) {
     const seg = rest[i];
+    // An empty segment sitting in frontmatter position (an extra `---` left between the headmatter
+    // and the first slide, or between slides) is not a slide — skip it rather than emit a blank
+    // slide. A real slide's empty BODY is consumed via `rest[i + 1]` below, so it never lands here.
+    if (seg.text.trim() === '') {
+      i += 1;
+      continue;
+    }
     let frontmatter: Record<string, unknown> = {};
     let bodySeg = seg;
     const hasNext = i + 1 < rest.length;
@@ -193,7 +214,7 @@ export function parseDeck(content: string): ParsedDeck {
     } else {
       i += 1;
     }
-    const { regions, notes } = parseBody(bodySeg.text);
+    const { regions, notes } = parseBody(bodySeg.text, warnings, bodySeg.line);
     slides.push({ frontmatter, regions, notes, sourceLine: bodySeg.line });
   }
 

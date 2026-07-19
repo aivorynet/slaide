@@ -72,12 +72,15 @@ export const SLOT_TYPES: readonly string[] = ['title', 'subtitle', 'body', 'imag
  *  literals across the parser/compiler; the lint scrapes src to keep this exhaustive. */
 export const DIAGNOSTIC_CODES: readonly string[] = [
   // parser/parse.ts
-  'bad-config', 'no-headmatter', 'ambiguous-frontmatter', 'empty-deck',
+  'bad-config', 'no-headmatter', 'ambiguous-frontmatter', 'empty-deck', 'bad-region',
   // compiler/compile.ts
   'unknown-color', 'unknown-gradient', 'bad-animation', 'unknown-layout',
   'unknown-transition', 'unknown-background', 'unknown-slot', 'low-contrast',
+  'overlapping-slots',
+  // compiler/unknown-vars.ts
+  'unknown-var',
   // compiler/markdown.ts
-  'unknown-class', 'unknown-entrance', 'stray-build', 'bad-chart',
+  'unknown-class', 'unknown-entrance', 'stray-build', 'bad-chart', 'bad-span',
   // compiler/tokens.ts
   'unknown-token', 'token-cycle', 'non-embeddable-font', 'unknown-variant',
   // compiler/chrome.ts
@@ -87,5 +90,8 @@ export const DIAGNOSTIC_CODES: readonly string[] = [
 ];
 
 /** Diagnostics that are hard errors (`ok:false`); every other code is a warning.
- *  Canonical here so `index.ts` and the docs share one definition. */
-export const ERROR_SEVERITY_CODES: ReadonlySet<string> = new Set(['empty-deck', 'no-master', 'unknown-layout']);
+ *  Canonical here so `index.ts` and the docs share one definition. `unknown-slot` is an
+ *  error (not a warning): a region routed to a slot its resolved layout doesn't define
+ *  silently drops the content, so a `deck_source` write with a bad slot name must be
+ *  rejected rather than reporting ok:true on a semantic no-op. */
+export const ERROR_SEVERITY_CODES: ReadonlySet<string> = new Set(['empty-deck', 'no-master', 'unknown-layout', 'unknown-slot']);

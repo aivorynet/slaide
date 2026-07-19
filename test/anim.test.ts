@@ -37,9 +37,9 @@ test('>>> <effect> emits a named entrance class', () => {
 
 test('>>> <effect> delay/dur/ease become inline CSS vars', () => {
   const html = ir(`---\nt: t\n---\nlayout: body\n---\n- a >>> zoom-in delay=150 dur=600 ease=ease-out`).slides[0].regions[0].html;
-  expect(html).toContain('--sl-ent-delay:150ms');
-  expect(html).toContain('--sl-ent-dur:600ms');
-  expect(html).toContain('--sl-ent-ease:ease-out');
+  expect(html).toContain('--slaide--ent-delay:150ms');
+  expect(html).toContain('--slaide--ent-dur:600ms');
+  expect(html).toContain('--slaide--ent-ease:ease-out');
 });
 
 test('unknown entrance warns and falls back to default', () => {
