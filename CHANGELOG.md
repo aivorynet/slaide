@@ -6,6 +6,16 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-19
+
+### Changed
+
+- **Theme grammar now teaches when to use `image` vs `media` slots**: `media` fills its box edge-to-edge (the type for almost every photograph); `image` contains the whole picture with margins (logos, diagrams, QR codes). The bundled skill and the minimal-master example follow suit, and the `maxw` guidance now warns against wrapping short titles.
+
+### Fixed
+
+- Entering the Theme Studio no longer jumps the deck up for a frame: the studio now opens before the dock relayout, so the reflow happens under cover.
+
 ## [1.2.0] - 2026-07-19
 
 Folds in the unpublished 1.1.0 (2026-07-11).

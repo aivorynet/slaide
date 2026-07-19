@@ -1,6 +1,6 @@
 [package]
 name = "slaide-view"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 description = "Native viewer/launcher for .slaide presentations"
 

@@ -1452,13 +1452,19 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
       if(master){
         thumbsBeforeMaster = q('#slv-thumbs').classList.contains('slv-open');
         bstripBeforeMaster = body.classList.contains('slv-bstrip-on');
+        // Studio opens BEFORE the docks change: setBstrip(false) zeroes --slaide--dock-bottom and
+        // relayouts the stage, which briefly jumped the still-uncovered deck up by a frame
+        // (user report 2026-07-19). With the studio already covering, the relayout is invisible.
+        // Exit keeps the reverse order for the same reason: docks restore under cover, studio
+        // closes last. editMaster stays authoritative over the live DOM either way.
+        if(s && s.editMaster) s.editMaster(true);
         setThumbs(false);
         setBstrip(false);
       } else {
         if(thumbsBeforeMaster) setThumbs(true);
         if(bstripBeforeMaster) setBstrip(true);
+        if(s && s.editMaster) s.editMaster(false);
       }
-      if(s && s.editMaster) s.editMaster(master);         // editMaster is now authoritative over the live DOM
     }
     if(modeSlide) modeSlide.addEventListener('click', function(){ setMode(false); });
     if(modeMaster) modeMaster.addEventListener('click', function(){ setMode(true); });

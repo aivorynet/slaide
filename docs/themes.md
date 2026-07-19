@@ -55,7 +55,7 @@ layouts:
     slots:
       title:    { type: title,    style: { font: display, size: h1, weight: "900" } }
       subtitle: { type: subtitle, style: { size: h3, color: accent } }
-      visual:   { type: image,    style: { valign: center } }
+      visual:   { type: media }   # a photo FILLS its box; use `image` only for logos/diagrams
   title-content:
     areas: ["title", "body"]
     rows: "auto 1fr"
@@ -189,7 +189,11 @@ layouts:
       s3: { type: body, style: { align: center, valign: center } }
 ```
 
-**Slot `type`** defaults: `title`, `subtitle`, `body`, `image`, `media`, `quote`, `caption`.
+**Slot `type`** — `title`, `subtitle`, `body`, `image`, `media`, `quote`, `caption`. When to use which for pictures:
+
+- **`media`** — a photo/screenshot that must **FILL its box edge-to-edge** (cover crop, no margins). This is the type for hero photos, split-layout imagery, full-bleed visuals — i.e. almost every photograph.
+- **`image`** — **contained**: the whole picture stays visible inside the box with margins. Logos, diagrams, QR codes, charts-as-images only. A scene photo in an `image` slot floats small in empty space — the #1 boxed-thumbnail failure.
+- There is **no `fit:` style key** — the slot *type* decides fill vs contain.
 
 > **Dark sections — read this or you ship invisible text.** A layout's `background` and its slots' text colour resolve **independently**; roles default to the *light* variant, so a dark `background` with default-role slots renders **dark-on-dark**. Fix: bind **`variant: dark`** to the layout (roles flip automatically — cleanest), or set explicit light `color:` on the slots. The compiler emits **`low-contrast`** when resolved text ≈ background (≈ under 2.5:1, including a `box:` panel's own surface), so `--strict` catches it. Bold/links inherit surrounding colour — never hand-colour a dark span onto a dark ground.
 
@@ -207,7 +211,7 @@ layouts:
 | `valign` | **vertical** align in cell | `top`/`center`/`bottom` |
 | `justify` | horizontal self-align in cell — use for an **image/box** (`align` only moves text) | `left`/`center`/`right` |
 | `weight` / `leading` / `transform` / `italic` | weight / line-height / `uppercase` / `true` | — |
-| `maxw` | max-width (title wrap control) | e.g. `"14ch"` |
+| `maxw` | max-width (wrap control). Body 30–40ch; a LONG hero title 16–22ch; a 2–3 word title gets **no maxw** (it wraps ugly and narrows the box) | e.g. `"36ch"` |
 | `box` | surface panel (bg + padding + radius) | `true`, a colour role/palette name (preferred), a **named master gradient** (`box: brand` → padded, rounded, gradient hero/closing panel), or a raw hex / CSS colour / gradient |
 | `bg` | background of the slot region | any CSS colour / gradient (literal) |
 | `anchor` | absolutely position the slot | `"x% y% w% h%"` of the canvas |
@@ -232,7 +236,7 @@ Inline `[text]{.class}` resolves against this master: **colour** = any `palette`
 - **No text-only slides — no exceptions.** Every content slide needs a visual: ` ```echart ` for data, inline ` ```svg ` for diagrams/mockups (preferred — precise, brand-styled), `box:` cards, or a stat callout. A comparison/pro-con slide is NOT exempt: use cards, a table, or SVG icons. Mix visual types across the deck — all-SVG or all-cards = monotone.
 - **Vary composition.** Never repeat the same layout archetype — two text+visual slides need structurally different layouts (not image-left twice). Mix archetypes, alternate dark/light grounds. One slide should break the pattern — oversized `.grad` stat, serif quote owning the canvas, or full-bleed visual.
 - **One idea per slide.** Each slide delivers one clear message (4 bullets max). The visual and text reinforce the SAME idea — if the visual still communicates without the text, that's right.
-- **Size contrast.** Pair `hero`/`stat` scale with body text. At least one slide MUST feature a single big number or statement using `.huge` or `.stat` — the audience remembers ONE number from every deck. No decorative accent lines under titles (AI tell).
+- **Size contrast.** Pair `hero`/`stat` scale with body text. At least one slide MUST feature a single big number or statement using `.huge` (the inline class for the `stat` size) — the audience remembers ONE number from every deck. No decorative accent lines under titles (AI tell).
 - **Use every font role** defined in the master (serif, display, mono).
 - **Whitespace.** `--slide-padding` ≥ 96px, `gap` ≥ 2em. `auto` rows for content, `1fr` spacers to centre. Cards need `pad`.
 - **Avoid `<a>` links in slides.** They aren't clickable during presentations and their `link` role color can override slot `color:`. Write URLs as plain text; style with `[text]{.class}` spans.
