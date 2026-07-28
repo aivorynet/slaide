@@ -41,6 +41,33 @@ export interface CopyResult {
   dest: string;
 }
 
+/** Marker written into an installed skill dir so future CLI runs can tell which package version
+ *  installed it — the hook for silent auto-refresh (`refreshInstalledSkills`). */
+export const SKILL_VERSION_MARKER = '.slaide-skill-version';
+
+/** Silently re-copy the bundled skill over existing USER-scope installs whose recorded version
+ *  differs from this package's — `slaide install` once, stay current on every upgrade. Stale
+ *  skills are worse than missing ones (an agent follows outdated rules verbatim; the 2026-07-28
+ *  bare-.slaide export incident). Skips dirs that don't exist (never installs anew), never
+ *  throws, and costs one stat per CLI when versions already match. */
+export function refreshInstalledSkills(currentVersion: string, homeDir: string, name = 'slaide'): void {
+  const src = skillSourceDir(name);
+  if (!existsSync(src)) return;
+  for (const cliDir of ['.claude', '.codex', '.gemini']) {
+    try {
+      const dest = join(homeDir, cliDir, 'skills', name);
+      if (!existsSync(join(dest, 'SKILL.md'))) continue;
+      const marker = join(dest, SKILL_VERSION_MARKER);
+      const installed = existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '';
+      if (installed === currentVersion) continue;
+      copyDir(src, dest);
+      writeFileSync(marker, currentVersion + '\n');
+    } catch {
+      /* refresh is best-effort — never break the actual command */
+    }
+  }
+}
+
 /** Recursively copy a directory (overwriting). Counts files; dryRun reports without writing. */
 export function copyDir(srcDir: string, destDir: string, dryRun = false): CopyResult {
   let files = 0;

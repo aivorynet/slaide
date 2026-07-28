@@ -99,6 +99,16 @@ Usage:
 }
 
 async function main(): Promise<void> {
+  // Silent skill auto-refresh: an installed skill copy older than this package gets re-synced on
+  // any real command, so `slaide install` is one-time — stale skills teach agents outdated rules
+  // (the 2026-07-28 bare-.slaide export incident). One stat when versions match; never throws.
+  if (cmd && cmd !== 'install' && !cmd.startsWith('-')) {
+    try {
+      const { refreshInstalledSkills } = await import('./install/skills.js');
+      const { homedir } = await import('node:os');
+      refreshInstalledSkills(pkgVersion(), homedir());
+    } catch { /* best-effort */ }
+  }
   switch (cmd) {
     case 'build': {
       const deck = positional(1);

@@ -6,6 +6,17 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-07-28
+
+### Changed
+
+- **Installed skills auto-update.** Any `slaide` command silently re-syncs the authoring skill
+  installed in `~/.claude`/`~/.codex`/`~/.gemini` when it is older than the package — `slaide
+  install` is now one-time.
+- The skill now states the hand-off rule explicitly: give decks to people and apps as
+  **`.slaidec`** (self-contained), never a bare `.slaide` — a `.slaide` without its master and
+  assets renders unthemed everywhere else.
+
 ## [1.2.2] - 2026-07-28
 
 ### Changed

@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { join, relative } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import type { CliSpec, DetectedCli } from './detect.js';
-import { copyDir, mergePointerFile } from './skills.js';
+import { copyDir, mergePointerFile, SKILL_VERSION_MARKER } from './skills.js';
 
 export type Scope = 'project' | 'global';
 
@@ -17,6 +17,7 @@ export interface InstallContext {
   homeDir: string;
   skillName: string;
   skillSrcDir: string;
+  packageVersion: string; // stamped into installed skills for silent auto-refresh
   dryRun: boolean;
 }
 
@@ -56,9 +57,15 @@ function runCli(bin: string, args: string[], cwd?: string): { ok: boolean; out: 
   return { ok: r.status === 0, out };
 }
 
-/** Copy the skill folder; the common case for skills-folder CLIs. */
+/** Copy the skill folder; the common case for skills-folder CLIs. Stamps the version marker so
+ *  later CLI runs auto-refresh a stale copy (refreshInstalledSkills). */
 function copySkill(ctx: InstallContext, dest: string, notes: string[] = []): SkillInstallResult {
   const r = copyDir(ctx.skillSrcDir, dest, ctx.dryRun);
+  if (!ctx.dryRun) {
+    try {
+      writeFileSync(join(dest, SKILL_VERSION_MARKER), ctx.packageVersion + '\n');
+    } catch { /* marker is best-effort; refresh will adopt marker-less installs anyway */ }
+  }
   return { installed: true, dest, files: r.files, notes };
 }
 

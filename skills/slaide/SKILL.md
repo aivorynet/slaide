@@ -62,4 +62,6 @@ Use the bundled theme — omit `master:` or set `master: aurora` — or author y
 | `import <file.pptx\|.key>` | PowerPoint/Keynote → slaide |
 | `new <file>` · `themes` · `pack`/`unpack` | scaffold · list themes · bundle `.slaidec` |
 
+**Handing the deck to anyone or any app: `pack <deck> -o out.slaidec` — always the `.slaidec`, never a bare `.slaide`.** A `.slaide` without its master + assets renders unthemed everywhere else; `.slaidec` is the self-contained bundle.
+
 If Playwright is missing: `npx playwright install chromium` once.

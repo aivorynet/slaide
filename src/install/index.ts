@@ -5,11 +5,11 @@
 // when run in a terminal; fully flag-driven (--cli/--scope/--skills/--mcp/--yes/--list/--json)
 // for scripts and CI. No third-party deps: prompts use node:readline/promises.
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { detectClis, type DetectedCli } from './detect.js';
 import { ADAPTERS, allSpecs, getAdapter, type CliAdapter, type InstallContext, type Scope } from './registry.js';
-import { skillSourceDir, readSkillName } from './skills.js';
+import { skillSourceDir, readSkillName, coreRoot } from './skills.js';
 
 export interface InstallOptions {
   cli?: string[]; // explicit CLI ids; undefined -> interactive select / all detected
@@ -147,7 +147,11 @@ export async function runInstall(opts: InstallOptions): Promise<number> {
 
   const summary: any[] = [];
   for (const { adapter, detected: det } of chosen) {
-    const ctx: InstallContext = { scope: opts.scope, projectDir: opts.projectDir, homeDir, skillName, skillSrcDir, dryRun: opts.dryRun };
+    let packageVersion = '0.0.0';
+    try {
+      packageVersion = JSON.parse(readFileSync(join(coreRoot(), 'package.json'), 'utf8')).version ?? '0.0.0';
+    } catch { /* marker just gets a placeholder; refresh adopts it on the next real version */ }
+    const ctx: InstallContext = { scope: opts.scope, projectDir: opts.projectDir, homeDir, skillName, skillSrcDir, packageVersion, dryRun: opts.dryRun };
     const row: any = { cli: adapter.id, displayName: adapter.displayName, detected: needDetect ? !!det : null };
     if (doSkills) {
       const r = adapter.installSkill(ctx);
