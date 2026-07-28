@@ -18,9 +18,9 @@ Everything you need to write, present, and move decks:
 
 Build all of it from source and use it forever, for anything, under Apache-2.0.
 
-## What's Pro (commercial)
+## What's free with a Slaide account
 
-Two capabilities, unlocked by a license:
+Two capabilities, unlocked for any signed-in account — no license needed:
 
 1. **In-app WYSIWYG editing.** Edit text and regions directly in the viewer and save back to
    the `.slaide` source. Insert elements from the editing bar. The Properties pane formats the
@@ -30,6 +30,8 @@ Two capabilities, unlocked by a license:
 2. **High-fidelity import.** The `hybrid` and `exact-raster` fidelities, which drive PowerPoint
    over COM to reproduce charts, SmartArt, and custom geometry pixel-perfectly. The free
    `reconstruct` import covers the common case cross-platform.
+
+The only paid capability is the cloud AI agent that drafts and revises decks for you.
 
 ## How it fits together (and why your clone has no paid code)
 
@@ -59,20 +61,20 @@ and is never published here. That is the structural guarantee: a clone of this r
 build an editing-capable Slaide, because the code is simply not present. There is nothing to
 patch out.
 
-## License and the editing feature
+## Sign-in and the editing feature
 
 The open core is Apache-2.0. You can run it, change it, and ship it freely.
 
 Editing is different. The editor engine is proprietary and is not in this repository. The open
 viewer only carries the Edit and Save controls and the wiring that talks to the engine. It
-cannot edit on its own. In-app editing works only with the official Slaide Pro binary and a
-valid license. Enabling or using the Pro editing capability without a valid license, including
-bypassing the license check, is not permitted under the Pro commercial terms.
+cannot edit on its own. In-app editing works only with the official Slaide binary, and unlocks
+for any signed-in account — no license needed. The AI agent stays gated behind a paid plan.
+Bypassing the sign-in or entitlement check is not permitted under the commercial terms.
 
 ## Pricing
 
-Pro and Hosted are paid. Plans and prices live at [getslaide.com](https://getslaide.com). The
-open core stays free.
+The AI agent is paid. Plans and prices live at [getslaide.com](https://getslaide.com). Everything
+else — the open core, editing, and hi-fi import — stays free.
 
 ## Our commitment
 

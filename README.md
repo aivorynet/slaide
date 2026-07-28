@@ -12,6 +12,8 @@ AI writes it because it is just text. AI designs it because the theme does the d
 
 Most of slaide is free and open source. The language, the renderer, the native viewer, export, import, the MCP server, and the agent skill all live in this repo under Apache-2.0. You can use it today, for anything.
 
+The in-app visual editor is free too: sign in with a Slaide account and the same binary unlocks it, no license needed. Only the cloud AI agent that drafts and revises decks for you is paid.
+
 ## Install
 
 One command — nothing else to set up:
@@ -87,15 +89,15 @@ irm https://github.com/aivorynet/slaide/releases/latest/download/install.ps1 | i
 
 …or a package manager (`scoop install slaide`, `brew install --cask slaide`, `winget install Slaide`), or download the archive from [Releases](https://github.com/aivorynet/slaide/releases), unzip, and run the bundled installer (it installs the binaries shipped inside, no network) — or just run `slaide-view` directly. (Or build from source with `npm run build:viewer`.)
 
-Editing is Pro: run `slaide auth login` (or click **Sign in** in the app) — Slaide fetches the Pro engine and unlocks it for a licensed account.
+Editing is free with a Slaide account: run `slaide auth login` (or click **Sign in** in the app) — Slaide fetches the full engine and unlocks editing, no license needed.
 
 ## For AI agents
 
 slaide ships an agent skill and an MCP server. Install the skill into Claude Code, Codex, or Gemini with `slaide install`. Point a custom agent at the server with `slaide mcp`. Both run the same engine as the CLI. (`slaide install` sets up the *agent skill* — distinct from `slaide app`, which installs the *desktop viewer*.)
 
-## Free and Pro
+## Free editing, paid AI
 
-Everything above is free, forever. Slaide Pro adds in-place visual editing and high-fidelity PowerPoint import. Run `slaide auth login` (or click **Sign in**, top-right, in the app): Slaide fetches the Pro engine and unlocks editing for a licensed account — the same binary serves everyone, the license is the only difference. Building from a source clone stays read-only by design: the Pro editor engine is proprietary and isn't in this repo, so there's nothing to patch out (a clone can't *build* Pro; the downloaded app *fetches* it on sign-in). See [docs/open-core.md](docs/open-core.md). Plans and prices are at [getslaide.com](https://getslaide.com).
+Everything above is free, forever — including in-place visual editing and high-fidelity PowerPoint import. Run `slaide auth login` (or click **Sign in**, top-right, in the app): Slaide fetches the full engine and unlocks editing for any signed-in account, no license needed — the same binary serves everyone, sign-in is the only difference. The paid tier is the cloud AI agent that drafts and revises decks for you. Building from a source clone stays read-only by design: the editor engine is proprietary and isn't in this repo, so there's nothing to patch out (a clone can't *build* the editor; the downloaded app *fetches* it on sign-in). See [docs/open-core.md](docs/open-core.md). Plans and prices are at [getslaide.com](https://getslaide.com).
 
 ## How it works
 

@@ -61,7 +61,19 @@ export interface MasterColors {
 export type BackgroundDef =
   | { type: 'solid'; color: string }
   | { type: 'gradient'; stops: string[]; angle?: number }
-  | { type: 'image'; src: string; fit?: 'cover' | 'contain'; dim?: number };
+  | {
+      type: 'image';
+      src: string;
+      /** CSS background-size: 'cover' | 'contain' | 'stretch' (→ 100% 100%) | any raw
+       *  value (e.g. 'auto', '80%'). Default 'cover'. */
+      fit?: string;
+      /** CSS background-position, e.g. 'center' | 'top' | 'right' | '50% 20%'. Default 'center'. */
+      position?: string;
+      /** CSS background-repeat, e.g. 'no-repeat' | 'repeat' | 'repeat-x'. Default 'no-repeat'. */
+      repeat?: string;
+      /** 0..1 black multiply overlay so text stays legible over the photo. */
+      dim?: number;
+    };
 
 export interface SlotDef {
   type: string; // title | subtitle | body | image | media | ...

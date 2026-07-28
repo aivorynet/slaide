@@ -977,6 +977,20 @@ export async function parsePptx(path: string): Promise<ImportIR> {
   const fontMajor = oattr(odeep(ochild(fontScheme, 'a:majorFont'), 'a:latin'), 'typeface') ?? 'Inter';
   const fontMinor = oattr(odeep(ochild(fontScheme, 'a:minorFont'), 'a:latin'), 'typeface') ?? 'Inter';
 
+  // Per-master theme scheme resolver (cached). A PPTX may carry one theme PER slideMaster
+  // (e.g. a dark cover/section master + a light content master). Scheme colours must resolve
+  // against the master's OWN theme — resolving every slide against theme1 paints dark slides
+  // in the light theme's palette (teal cover -> lt2 grey, white title -> dk1 black).
+  const themeSchemeCache: Record<string, Record<string, string>> = {};
+  const schemeFromTheme = async (themePath: string): Promise<Record<string, string> | undefined> => {
+    if (themeSchemeCache[themePath]) return themeSchemeCache[themePath];
+    const raw = await readStr(themePath);
+    if (!raw) return undefined;
+    const cs = ochild(odeep({ 'p:_root': ordered.parse(raw) }, 'a:themeElements'), 'a:clrScheme');
+    if (!cs) return undefined;
+    return (themeSchemeCache[themePath] = resolveScheme(cs));
+  };
+
   // slide order via presentation rels
   const presRels = flat.parse((await readStr('ppt/_rels/presentation.xml.rels')) ?? '');
   const relMap: Record<string, string> = {};
@@ -1044,6 +1058,7 @@ export async function parsePptx(path: string): Promise<ImportIR> {
     const layoutNorm = layoutPath ? layoutPath.replace(/ppt\/slides\/\.\.\//, 'ppt/') : undefined;
     let inherit: Inherit = inheritCache['__none__'] ?? { ph: {}, txStyles: { title: [], body: [], other: [] }, decorations: [] };
     let masterColorMap: Record<string, string> = {};
+    let slideScheme = scheme;
 
     if (layoutNorm) {
       if (!inheritCache[layoutNorm]) {
@@ -1054,10 +1069,23 @@ export async function parsePptx(path: string): Promise<ImportIR> {
         const masterRoot = masterNorm ? await parseOrdered(masterNorm) : undefined;
         const masterRels = masterNorm ? await relsFor(masterNorm) : {};
 
-        // clrMap from master
+        // Resolve THIS master's own theme (its .rels points at one themeN.xml); fall back to
+        // the deck's first theme when absent. This is what makes dark masters keep their colours.
+        const themeTarget = Object.entries(masterRels).find(([, t]) => /theme\d+\.xml$/.test(t))?.[1];
+        const masterScheme = (themeTarget ? await schemeFromTheme('ppt/' + themeTarget.replace(/^\.\.\//, '')) : undefined) ?? scheme;
+
+        // clrMap from master, then honour the layout's colour-map OVERRIDE. A dark-mode
+        // layout carries <a:overrideClrMapping bg1="dk1" tx1="lt1" bg2="dk2" .../> which
+        // REPLACES the master map — without it a dark slide resolves bg2->lt2 (light) and
+        // its white (tx1->lt1) text -> dk1 (black), collapsing the slide.
         const cm = odeep(masterRoot, 'p:clrMap');
         if (cm) for (const [k, v] of Object.entries(cm[':@'] ?? {})) masterColorMap[k.replace(/^@_/, '')] = String(v);
-        const ictx: ColorCtx = { scheme, clrMap: masterColorMap };
+        const layoutOvr = odeep(layoutRoot, 'a:overrideClrMapping');
+        if (layoutOvr) {
+          masterColorMap = {};
+          for (const [k, v] of Object.entries(layoutOvr[':@'] ?? {})) masterColorMap[k.replace(/^@_/, '')] = String(v);
+        }
+        const ictx: ColorCtx = { scheme: masterScheme, clrMap: masterColorMap };
 
         const ph: Record<string, PhInfo> = {};
         indexPlaceholders(odeep(masterRoot, 'p:spTree'), ictx, fontMajor, fontMinor, ph);
@@ -1089,13 +1117,23 @@ export async function parsePptx(path: string): Promise<ImportIR> {
 
         inheritCache[layoutNorm] = { ph, txStyles, background: layoutBg ?? masterBg, decorations };
         (inheritCache[layoutNorm] as any).__clrMap = masterColorMap;
+        (inheritCache[layoutNorm] as any).__scheme = masterScheme;
       }
       inherit = inheritCache[layoutNorm];
       masterColorMap = (inherit as any).__clrMap ?? {};
+      slideScheme = (inherit as any).__scheme ?? scheme;
     }
     colorCtx.clrMap = masterColorMap;
+    colorCtx.scheme = slideScheme;
 
     const slideRoot = await parseOrdered(sp);
+    // A slide's own colour-map override (rare) wins over the layout/master map for that slide.
+    const slideOvr = odeep(slideRoot, 'a:overrideClrMapping');
+    if (slideOvr) {
+      const m: Record<string, string> = {};
+      for (const [k, v] of Object.entries(slideOvr[':@'] ?? {})) m[k.replace(/^@_/, '')] = String(v);
+      colorCtx.clrMap = m;
+    }
     const cSld = odeep(slideRoot, 'p:cSld');
     const spTree = odeep(cSld, 'p:spTree');
     if (!spTree) continue;

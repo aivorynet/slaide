@@ -77,6 +77,9 @@ enum UserEvent {
     // Human-readable status from the AuthLogin worker (e.g. "Downloading Pro engine…") while it
     // self-upgrades an OSS install before signing in. Shown in the title bar + ribbon account chip.
     AuthProgress(String),
+    // Ribbon asked to open a URL in the system browser (hosted-chat upsell). Allowlisted to the
+    // product's own site — never an arbitrary page-supplied URL.
+    OpenUrl(String),
 }
 
 /// Viewer-chrome colour theme. Defaults to `Light` (mirrors the Slaide Pro web look);
@@ -263,11 +266,16 @@ fn run(args: Vec<String>) -> Result<()> {
     // Display names for the Present button's per-monitor picker (shown only when >1).
     let monitor_names = display_names(&window);
 
+    // Editable deck → start the `slaide-engine serve` chat sidecar and inject its address as
+    // window.__SLV_NATIVE_CHAT__ so the ribbon can reveal + wire the AI chat drawer.
+    let mut serve_proc: Option<ServeInfo> = None;
+    let chat = if !present && meta.editable { ensure_serve(&engine, &deck, &mut serve_proc) } else { None };
+
     // Serve the deck over a custom protocol (→ http://slaide.localhost/ on Windows),
     // NOT file://. wry's WebView2 IPC handler builds an http::Uri from the document URL
     // and unwraps it — a file:// URL fails that parse and panics on every IPC message.
     // A custom protocol also sidesteps the ~2 MB NavigateToString limit.
-    let state = Arc::new(Mutex::new(if present { html } else { inject_toolbar(&html, meta.editable, &monitor_names) }));
+    let state = Arc::new(Mutex::new(if present { html } else { inject_toolbar(&html, meta.editable, &monitor_names, chat.as_ref()) }));
     // When set, the protocol serves this (toolbar-free, print-mode) HTML instead of
     // `state` — used transiently while exporting a PDF, then cleared.
     let serve_override: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -352,6 +360,7 @@ fn run(args: Vec<String>) -> Result<()> {
                 "insert-image" => Some(UserEvent::InsertImageDialog),
                 "auth:login" => Some(UserEvent::AuthLogin),
                 "auth:logout" => Some(UserEvent::AuthLogout),
+                b if b.starts_with("open-url:") => Some(UserEvent::OpenUrl(b["open-url:".len()..].to_string())),
                 b if b.starts_with("save:") => Some(UserEvent::SaveEdits(b["save:".len()..].to_string())),
                 b if b.starts_with("prefs:") => Some(UserEvent::SavePrefs(b["prefs:".len()..].to_string())),
                 _ => None,
@@ -397,9 +406,9 @@ fn run(args: Vec<String>) -> Result<()> {
                 }
                 UserEvent::OpenPath(p) => {
                     deck = p;
-                    reload(&engine, &deck, &webview, &window, &state, present);
+                    reload(&engine, &deck, &webview, &window, &state, present, &mut serve_proc);
                 }
-                UserEvent::Reload => reload(&engine, &deck, &webview, &window, &state, present),
+                UserEvent::Reload => reload(&engine, &deck, &webview, &window, &state, present, &mut serve_proc),
                 UserEvent::ExportHtmlDialog => {
                     let px = dialog_proxy.clone();
                     let default = deck.with_extension("html").file_name().and_then(|s| s.to_str()).unwrap_or("deck.html").to_string();
@@ -603,7 +612,7 @@ fn run(args: Vec<String>) -> Result<()> {
                 }
                 // Persist in-place edits to the .slaide source, then reload from disk.
                 UserEvent::SaveEdits(json) => match save_edits(&engine, &deck, &json) {
-                    Ok(_) => reload(&engine, &deck, &webview, &window, &state, present),
+                    Ok(_) => reload(&engine, &deck, &webview, &window, &state, present, &mut serve_proc),
                     Err(e) => msg("Save failed", &e.to_string()),
                 },
                 // Editor asked to insert a picture: pick a file, copy into assets/, hand the
@@ -663,6 +672,13 @@ fn run(args: Vec<String>) -> Result<()> {
                         let _ = px.send_event(UserEvent::AuthDone(true, String::new()));
                     });
                 }
+                // Hosted-chat upsell: open the checkout in the system browser. Hard allowlist —
+                // only the product's own site ever leaves the app.
+                UserEvent::OpenUrl(u) => {
+                    if u.starts_with("https://app.getslaide.com/") {
+                        open_external(&u);
+                    }
+                }
                 UserEvent::AuthProgress(s) => {
                     // Surface upgrade/sign-in progress: title bar + the ribbon's account chip.
                     window.set_title(&s);
@@ -679,7 +695,7 @@ fn run(args: Vec<String>) -> Result<()> {
                         msg("Sign-in failed", &m);
                     }
                     // Re-render: the new entitlement flips __SLV_EDITABLE__ / __SLV_LICENSE__.
-                    reload(&engine, &deck, &webview, &window, &state, present);
+                    reload(&engine, &deck, &webview, &window, &state, present, &mut serve_proc);
                 }
             },
             _ => {}
@@ -687,11 +703,23 @@ fn run(args: Vec<String>) -> Result<()> {
     });
 }
 
-fn reload(engine: &Path, deck: &Path, webview: &wry::WebView, window: &tao::window::Window, state: &Arc<Mutex<String>>, present: bool) {
+fn reload(engine: &Path, deck: &Path, webview: &wry::WebView, window: &tao::window::Window, state: &Arc<Mutex<String>>, present: bool, serve: &mut Option<ServeInfo>) {
     let next = match render(engine, deck, false, true) {
         Ok((h, meta)) => {
             window.set_title(&window_title(&meta, deck));
-            if present { h } else { inject_toolbar(&h, meta.editable, &display_names(window)) }
+            if present {
+                h
+            } else {
+                // Keep the chat sidecar in step with the deck: (re)spawn for editable renders
+                // (deck switches respawn against the new deck), stop it when editing is locked.
+                let chat = if meta.editable {
+                    ensure_serve(engine, deck, serve)
+                } else {
+                    drop(serve.take());
+                    None
+                };
+                inject_toolbar(&h, meta.editable, &display_names(window), chat.as_ref())
+            }
         }
         Err(e) => error_page(&e.to_string()),
     };
@@ -735,6 +763,110 @@ fn find_engine() -> Option<PathBuf> {
         }
     }
     which::which("slaide-engine").ok()
+}
+
+/// A running `slaide-engine serve` sidecar — the localhost proxy the native AI chat talks to
+/// (hosted-token injection, agent WS pipe, /local deck sync). One per open deck; killed and
+/// respawned when the deck changes. The Windows job object (see setup_job_kill_on_close) tears
+/// it down with the viewer; Drop also best-effort kills it on replace.
+struct ServeInfo {
+    child: std::process::Child,
+    deck: PathBuf,
+    base: String,
+    ws_url: String,
+}
+impl Drop for ServeInfo {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ServeHandshake {
+    port: u16,
+    secret: String,
+}
+
+/// Spawn `slaide-engine serve --deck <deck>` and read its single stdout handshake line
+/// `{"port":N,"secret":"..."}` (reader thread + 10s timeout so a hung engine can't wedge the
+/// UI). None = no sidecar (OSS engine, spawn/handshake failure) — chat simply stays unwired.
+fn spawn_serve(engine: &Path, deck: &Path) -> Option<ServeInfo> {
+    let mut cmd = Command::new(engine);
+    cmd.arg("serve").arg("--deck").arg(deck);
+    if let Some(parent) = deck.parent() {
+        if !parent.as_os_str().is_empty() {
+            cmd.current_dir(parent);
+        }
+    }
+    // stderr → null: it's log-only, and an unread pipe would eventually block the child.
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let mut child = cmd.spawn().ok()?;
+    let stdout = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        let mut line = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut line);
+        let _ = tx.send(line);
+    });
+    let line = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(l) => l,
+        Err(_) => {
+            let _ = child.kill();
+            return None;
+        }
+    };
+    let hs: ServeHandshake = match serde_json::from_str(line.trim()) {
+        Ok(h) => h,
+        Err(_) => {
+            let _ = child.kill();
+            return None;
+        }
+    };
+    Some(ServeInfo {
+        child,
+        deck: deck.to_path_buf(),
+        base: format!("http://127.0.0.1:{}/{}", hs.port, hs.secret),
+        ws_url: format!("ws://127.0.0.1:{}/{}/ws/agent", hs.port, hs.secret),
+    })
+}
+
+/// The (base, wsUrl) pair for the current deck's chat sidecar, (re)spawning when the deck
+/// changed or the child died. Assigning the slot drops (kills) any previous sidecar.
+fn ensure_serve(engine: &Path, deck: &Path, slot: &mut Option<ServeInfo>) -> Option<(String, String)> {
+    let stale = match slot {
+        Some(s) => s.deck.as_path() != deck || s.child.try_wait().map(|st| st.is_some()).unwrap_or(true),
+        None => true,
+    };
+    if stale {
+        *slot = spawn_serve(engine, deck);
+    }
+    slot.as_ref().map(|s| (s.base.clone(), s.ws_url.clone()))
+}
+
+/// Open a URL in the system default browser. Windows uses the InternetShortcut + explorer trick
+/// (no shell quoting pitfalls — same approach as the sign-in flow); mac/linux use open/xdg-open.
+fn open_external(url: &str) {
+    #[cfg(windows)]
+    {
+        let url_file = std::env::temp_dir().join("slaide-open.url");
+        if std::fs::write(&url_file, format!("[InternetShortcut]\nURL={url}\n")).is_ok() {
+            let _ = Command::new("explorer.exe").arg(&url_file).spawn();
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open").arg(url).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = Command::new("xdg-open").arg(url).spawn();
+    }
 }
 
 /// Spawn the engine to render the deck to a self-contained, presentation-only HTML
@@ -847,7 +979,7 @@ fn display_names(window: &tao::window::Window) -> Vec<String> {
         .collect()
 }
 
-fn inject_toolbar(html: &str, editable: bool, monitors: &[String]) -> String {
+fn inject_toolbar(html: &str, editable: bool, monitors: &[String], chat: Option<&(String, String)>) -> String {
     // The viewer chrome (auto-hiding ribbon + thumbnail navigator + zoom controls)
     // lives in its own file so the HTML/CSS/JS is editable as such.
     // include_str! bakes it in at compile time; cargo rebuilds when it changes.
@@ -869,6 +1001,13 @@ fn inject_toolbar(html: &str, editable: bool, monitors: &[String]) -> String {
     }
     head.push_str(&format!("<script>window.__SLV_MONITORS__={mons};</script>\n"));
     head.push_str(&format!("<script>window.__SLV_PREFS__={prefs};</script>\n"));
+    // Native AI chat: the `slaide-engine serve` sidecar's per-process address + secret. The
+    // ribbon reveals the chat button only when this is present AND caps carry ai-agent.
+    if let Some((base, ws)) = chat {
+        let b = serde_json::to_string(base).unwrap_or_else(|_| "\"\"".into());
+        let w = serde_json::to_string(ws).unwrap_or_else(|_| "\"\"".into());
+        head.push_str(&format!("<script>window.__SLV_NATIVE_CHAT__={{base:{b},wsUrl:{w}}};</script>\n"));
+    }
     if let Some(idx) = html.rfind("</body>") {
         let mut out = String::with_capacity(html.len() + BAR.len() + head.len());
         out.push_str(&html[..idx]);

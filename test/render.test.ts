@@ -27,6 +27,24 @@ test('render is presentation-only and leak-free (no editing surface)', () => {
   }
 });
 
+test('inline bg-image renders on the bg layer with CSS size/position/dim (stretch → 100% 100%)', () => {
+  const h = html(`---\nt: t\n---\nlayout: cover\nbg-image: https://x/y.webp\nbg-size: stretch\nbg-position: top\nbg-dim: 0.4\n---\n# Hi`);
+  const bg = h.match(/<div class="sl-layer-bg" style="([^"]*)"/)?.[1] ?? '';
+  expect(bg).toContain("background-image:url('https://x/y.webp')");
+  expect(bg).toContain('background-size:100% 100%'); // stretch alias
+  expect(bg).toContain('background-position:top');
+  expect(bg).toContain('background-color:rgba(0,0,0,0.4);background-blend-mode:multiply');
+});
+
+test('inline bg-image with no options defaults to cover / center / no-repeat and no dim', () => {
+  const h = html(`---\nt: t\n---\nlayout: cover\nbg-image: https://x/y.webp\n---\n# Hi`);
+  const bg = h.match(/<div class="sl-layer-bg" style="([^"]*)"/)?.[1] ?? '';
+  expect(bg).toContain('background-size:cover');
+  expect(bg).toContain('background-position:center');
+  expect(bg).toContain('background-repeat:no-repeat');
+  expect(bg).not.toContain('background-blend-mode'); // no dim
+});
+
 test('regions carry data-source-region (source-provenance for round-tripping)', () => {
   // bare content → routed to the primary slot `title`, but its SOURCE region is `default`
   const ir = compile(parseDeck(`---\nt: t\n---\nlayout: cover\n---\n# Hi`), MASTER);

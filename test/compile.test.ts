@@ -74,6 +74,23 @@ test('background resolves from layout default', () => {
   expect(out.slides[0].background).toEqual({ type: 'solid', color: '#111' });
 });
 
+test('inline bg-image builds an image background (with size/position/dim) and wins over background:', () => {
+  const out = ir(`---\ntitle: t\n---\nlayout: cover\nbackground: cover\nbg-image: https://x/y.webp\nbg-size: stretch\nbg-position: top\nbg-dim: 0.4\n---\nHi`);
+  expect(out.slides[0].background).toEqual({
+    type: 'image', src: 'https://x/y.webp', fit: 'stretch', position: 'top', repeat: undefined, dim: 0.4,
+  });
+  expect(out.slides[0].bgName).toBeNull(); // inline image, not a named master background
+  expect(out.warnings.find((w) => w.code === 'unknown-background')).toBeUndefined();
+});
+
+test('inline bg-image with no size/dim leaves those undefined (render applies cover/no-dim defaults)', () => {
+  const out = ir(`---\ntitle: t\n---\nlayout: body\nbg-image: /api/slaide/assets/a/raw\n---\nHi`);
+  expect(out.slides[0].background).toMatchObject({ type: 'image', src: '/api/slaide/assets/a/raw' });
+  const bg = out.slides[0].background as { fit?: string; dim?: number };
+  expect(bg.fit).toBeUndefined();
+  expect(bg.dim).toBeUndefined();
+});
+
 test('slot color: falls back palette → literal (no invisible text) and warns on unknown names', () => {
   const m: Master = {
     name: 'cm',

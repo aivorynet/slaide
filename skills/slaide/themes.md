@@ -129,7 +129,9 @@ The `--code-*` tokens are the only way to style code panels (no per-fence highli
 
 ## backgrounds
 
-Named layers referenced by layouts (`background: cover`) or slides. Native types: **`solid`**, **`gradient`** (linear only — `stops` + `angle`), **`image`** (`src`, `fit`, `dim`). **There is no `radial` type** — for a dark hero glow, point an `image` background at an SVG with a `radialGradient` (a small file or `data:` URI).
+Named layers referenced by layouts (`background: cover`) or slides. Native types: **`solid`**, **`gradient`** (linear only — `stops` + `angle`), **`image`** (`src`, `fit` — `cover`/`contain`/`stretch` or any CSS `background-size` —, `position`, `repeat`, `dim`). **There is no `radial` type** — for a dark hero glow, point an `image` background at an SVG with a `radialGradient` (a small file or `data:` URI).
+
+For a full-bleed photo on ONE slide without a master entry, set it inline in the slide's frontmatter: `bg-image:` (+ `bg-size`/`bg-position`/`bg-repeat`/`bg-dim`) — it paints the same background layer, so text flows over it with no slot (see spec.md §3). Prefer this over putting a background photo in an `image`/`media` slot.
 
 ```yaml
 backgrounds:

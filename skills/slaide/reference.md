@@ -44,6 +44,11 @@ My Talk
 | `transition-ms` | milliseconds | Duration override for this slide's transition. |
 | `transition-ease` | a CSS easing | Easing override (`ease`, `cubic-bezier(…)`). |
 | `background` | a master background name | Override the layout's background. |
+| `bg-image` | image URL / asset ref / `data:` URI | Inline full-bleed photo on the slide's background layer (behind the grid — text flows over it, no slot). Wins over `background:`. |
+| `bg-size` | `cover`,`contain`,`stretch`, or a CSS `background-size` | How the `bg-image` fills the slide. `stretch` = `100% 100%`. Default `cover`. |
+| `bg-position` | a CSS `background-position` | Focal point of the `bg-image` (e.g. `top`, `right`, `50% 20%`). Default `center`. |
+| `bg-repeat` | a CSS `background-repeat` | Tiling for the `bg-image`. Default `no-repeat`. |
+| `bg-dim` | `0`–`1` | Black multiply overlay over the `bg-image` so text stays legible (e.g. `0.4`). |
 | `variant` | a master variant name | Scoped token overrides (e.g. a light section). |
 | `morph` | an id | Participate in a shared-element morph. |
 | `footer` | inline Markdown | Per-slide footer; also `{{footer}}`. |

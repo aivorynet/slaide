@@ -836,13 +836,43 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
       if(c.persist){ var lb = q('#slv-ins-library'); if(lb) lb.style.display = ''; }
       if(!c.export){ Array.prototype.forEach.call(document.querySelectorAll('#slv-file-menu [data-exp]'), function(e){ e.hidden = true; }); }
     }
-    // AI chat button: WEB/hosted only. Native has no chat backend wired yet, so it stays hidden
-    // there — gate on WEB, not just the aiAgent cap (a hosted-licensed desktop user carries the
-    // aiAgent capability locally, which must NOT reveal the non-functional native drawer).
-    // The web-editor's main.ts reveals + rewires this button.
-    if(WEB && c.aiAgent){
-      var chatBtn = q('#slv-chat-btn');
-      if(chatBtn){ chatBtn.hidden = false; chatBtn.addEventListener('click', function(){ setChatOpen(!chatOpen); }); }
+    // AI chat button. WEB/hosted: reveal on the aiAgent cap (web-editor main.ts rewires it).
+    // Native: reveal when the viewer injected __SLV_NATIVE_CHAT__ (the local `slaide-engine
+    // serve` chat proxy is running) AND the caps carry ai-agent; the chat glue
+    // (__SLV_CHAT_BOOT__, a later phase) lazily mounts on first click — its absence degrades to
+    // a one-line notice in the drawer, never a dead button. Signed in WITHOUT a hosted seat →
+    // upsell-styled button that deep-links the system browser to the upgrade page.
+    // Signed out → hidden (Sign in is the path).
+    var NATIVE_CHAT = !WEB && !!window.__SLV_NATIVE_CHAT__;
+    var LIC = window.__SLV_LICENSE__ || { state:'none' };
+    var chatBtn = q('#slv-chat-btn');
+    if(chatBtn && c.aiAgent && (WEB || NATIVE_CHAT)){
+      var chatBooted = false;
+      chatBtn.hidden = false;
+      chatBtn.addEventListener('click', function(){
+        if(NATIVE_CHAT && !chatBooted){
+          chatBooted = true;
+          if(window.__SLV_CHAT_BOOT__){
+            try{ window.__SLV_CHAT_BOOT__(); }catch(e){}
+          } else {
+            var m = q('#slv-chat-msgs');
+            if(m && !m.childNodes.length){
+              var note = document.createElement('div');
+              note.style.cssText = 'padding:10px 4px;font-size:12px;opacity:.65;';
+              note.textContent = 'AI chat glue not installed in this build.';
+              m.appendChild(note);
+            }
+          }
+        }
+        setChatOpen(!chatOpen);
+      });
+    } else if(chatBtn && !WEB && LIC.state !== 'none'){
+      chatBtn.hidden = false;
+      chatBtn.classList.add('slv-cta');
+      chatBtn.title = 'AI Chat — your first deck is free';
+      chatBtn.addEventListener('click', function(){
+        ipcSend('open-url:https://app.getslaide.com/slaide/upgrade');
+      });
     }
   }
 
@@ -1292,11 +1322,11 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     if(lic.state === 'none'){
       lbl.textContent = 'Sign in';
       btn.classList.add('slv-cta');
-      btn.title = 'Sign in to unlock Pro editing';
+      btn.title = 'Sign in to edit — free';
       btn.onclick = function(){ ipcSend('auth:login'); };
     } else {
       var tier = (lic.tier && lic.tier !== 'none') ? lic.tier : (lic.state === 'trial' ? 'trial' : lic.state === 'hosted' ? 'hosted' : 'pro');
-      lbl.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);   // "Pro" / "Trial" / "Hosted"
+      lbl.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);   // "Pro" / "Trial" / "Hosted" / "Free"
       btn.classList.add('slv-signed');
       btn.title = (lic.email ? 'Signed in as ' + lic.email : 'Signed in') + ' — click to sign out';
       btn.onclick = function(){ ipcSend('auth:logout'); };
@@ -1404,7 +1434,11 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
   function setBstrip(open){
     body.classList.toggle('slv-bstrip-on', open);
     if(open && (!bstripBuilt || bstripDirty)) buildBstrip();
-    document.documentElement.style.setProperty('--slaide--dock-bottom', open ? (BSTRIP_H + 'px') : '0px');
+    // On a phone (mobile engine) the bottom filmstrip is hidden in edit mode and the inspector —
+    // restyled into a bottom sheet — owns --slaide--dock-bottom instead. Writing it here would
+    // clobber the inspector's reservation (setEdit calls s.edit()→openInspector, THEN setBstrip).
+    if((window.innerWidth||9999) > 700)
+      document.documentElement.style.setProperty('--slaide--dock-bottom', open ? (BSTRIP_H + 'px') : '0px');
     var s = S(); if(s && s.relayout) s.relayout();
     if(open) highlightBstrip(s ? s.index : 0);
   }

@@ -38,7 +38,8 @@ export const FRONTMATTER_KEYS: readonly string[] = [...KNOWN_SLIDE_KEYS];
  *  documented as placeholders/headmatter instead. */
 export const FRONTMATTER_CONFIG_KEYS: readonly string[] = [
   'layout', 'transition', 'transition-ms', 'transition-ease',
-  'background', 'variant', 'morph', 'chrome', 'logo', 'footer', 'notes',
+  'background', 'bg-image', 'bg-size', 'bg-position', 'bg-repeat', 'bg-dim',
+  'variant', 'morph', 'chrome', 'logo', 'footer', 'notes',
 ];
 
 /** Deck headmatter keys with defined meaning (plus any custom scalar → placeholder). */

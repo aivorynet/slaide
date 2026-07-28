@@ -6,6 +6,19 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-07-28
+
+### Changed
+
+- **The visual editor is now free.** Signing in with a free Slaide account unlocks in-place
+  editing and high-fidelity PowerPoint import in the desktop app — no license purchase. Only
+  the cloud AI (day pass or Slaide Hosted) is paid, and every account's first AI deck
+  (up to 10 slides) is free. The viewer, CLI, and language remain open source and need no
+  account at all.
+- The ribbon's account chip and AI upsell reflect the free tier ("Sign in to edit — free";
+  the AI button leads to the upgrade page with the free-deck claim instead of straight to
+  checkout).
+
 ## [1.2.1] - 2026-07-19
 
 ### Changed

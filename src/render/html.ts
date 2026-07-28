@@ -19,9 +19,13 @@ function backgroundCss(bg: BackgroundDef | null): string {
     return `background:linear-gradient(${angle}deg, ${bg.stops.join(', ')});`;
   }
   if (bg.type === 'image') {
-    const fit = bg.fit ?? 'cover';
+    // `stretch` is a friendly alias for CSS `100% 100%` (distort to fill, ignoring aspect).
+    const fitRaw = bg.fit ?? 'cover';
+    const size = fitRaw === 'stretch' ? '100% 100%' : fitRaw;
+    const pos = bg.position ?? 'center';
+    const repeat = bg.repeat ?? 'no-repeat';
     const dim = bg.dim ? `background-color:rgba(0,0,0,${bg.dim});background-blend-mode:multiply;` : '';
-    return `background-image:url('${bg.src}');background-size:${fit};background-position:center;${dim}`;
+    return `background-image:url('${bg.src}');background-size:${size};background-position:${pos};background-repeat:${repeat};${dim}`;
   }
   return '';
 }

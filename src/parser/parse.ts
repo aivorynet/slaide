@@ -52,6 +52,8 @@ const REGION_RE = /^::\s*([\w-]+)\s*::\s*$/;
 // Exported as the canonical frontmatter-key set (see src/vocab.ts).
 export const KNOWN_SLIDE_KEYS = new Set([
   'layout', 'background', 'transition', 'transition-ms', 'transition-ease', 'variant', 'chrome', 'footer', 'logo', 'morph', 'notes', 'progress',
+  // Inline per-slide image background (full-bleed photo BEHIND the grid; no master entry needed).
+  'bg-image', 'bg-size', 'bg-position', 'bg-repeat', 'bg-dim',
   'title', 'author', 'company', 'date', 'subtitle',
 ]);
 

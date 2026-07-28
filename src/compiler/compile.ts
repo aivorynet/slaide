@@ -403,17 +403,34 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
       });
     }
 
-    // Background (slide override > layout default).
-    const bgName = asString(eff.background) ?? layoutDef.background;
+    // Background: an inline per-slide image (`bg-image:`) wins; otherwise a named master
+    // background (slide `background:` override > layout default). An inline image renders on
+    // the full-canvas bg layer BEHIND the grid, so text flows over it without fighting slots.
+    let bgName: string | undefined;
     let background: BackgroundDef | null = null;
-    if (bgName) {
-      background = master.backgrounds?.[bgName] ?? null;
-      if (!background) {
-        warnings.push({
-          code: 'unknown-background',
-          message: `Slide ${i + 1}: unknown background "${bgName}".`,
-          line: pslide.sourceLine,
-        });
+    const inlineBgSrc = asString(eff['bg-image']);
+    if (inlineBgSrc) {
+      const dimRaw = eff['bg-dim'];
+      const dim = dimRaw !== undefined && /^[\d.]+$/.test(String(dimRaw)) ? Number(dimRaw) : undefined;
+      background = {
+        type: 'image',
+        src: inlineBgSrc,
+        fit: asString(eff['bg-size'])?.trim() || undefined,
+        position: asString(eff['bg-position'])?.trim() || undefined,
+        repeat: asString(eff['bg-repeat'])?.trim() || undefined,
+        dim: dim !== undefined && dim > 0 ? dim : undefined,
+      };
+    } else {
+      bgName = asString(eff.background) ?? layoutDef.background;
+      if (bgName) {
+        background = master.backgrounds?.[bgName] ?? null;
+        if (!background) {
+          warnings.push({
+            code: 'unknown-background',
+            message: `Slide ${i + 1}: unknown background "${bgName}".`,
+            line: pslide.sourceLine,
+          });
+        }
       }
     }
 
