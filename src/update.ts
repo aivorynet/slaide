@@ -11,6 +11,7 @@ import { slaideHome } from './desktop/paths.js';
 const PKG = '@aivorynet/slaide';
 const REGISTRY = `https://registry.npmjs.org/${PKG}/latest`;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const FAIL_RETRY_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 1500;
 
 // Machine-contract commands: never emit chatter or spend time on a network check.
@@ -43,6 +44,7 @@ function semverGt(a: string, b: string): boolean {
 
 interface State {
   lastCheck?: number;
+  lastFail?: number;
   latest?: string;
 }
 function readState(): State {
@@ -85,10 +87,18 @@ export async function maybeNotifyUpdate(current: string, cmd?: string): Promise<
     const st = readState();
     const now = Date.now();
     let latest = st.latest;
-    if (!st.lastCheck || now - st.lastCheck > CHECK_INTERVAL_MS) {
+    const due = !st.lastCheck || now - st.lastCheck > CHECK_INTERVAL_MS;
+    const failCooldown = st.lastFail !== undefined && now - st.lastFail < FAIL_RETRY_MS;
+    if (due && !failCooldown) {
       const fetched = await fetchLatest();
-      if (fetched) latest = fetched;
-      writeState({ lastCheck: now, latest });
+      if (fetched) {
+        latest = fetched;
+        writeState({ lastCheck: now, latest });
+      } else {
+        // A failed check must not consume the daily slot — keep lastCheck so the retry comes
+        // after FAIL_RETRY_MS, not tomorrow; the cooldown keeps offline commands stall-free.
+        writeState({ ...st, lastFail: now });
+      }
     }
     if (!latest || !semverGt(latest, current)) return;
 

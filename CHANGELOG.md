@@ -6,6 +6,14 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-08-01
+
+### Fixed
+
+- The daily update check no longer counts a failed npm-registry request against the 24-hour
+  throttle. A timeout or server error used to silence the notifier for a full day; it now
+  retries after an hour, while successful checks keep the once-a-day cadence.
+
 ## [1.2.3] - 2026-07-28
 
 ### Changed

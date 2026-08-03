@@ -1,14 +1,15 @@
 name: Release
 
-# On a version tag (the GitLab mirror pushes `v*` here), this:
-#   1. builds the native viewer + engine on Linux, macOS and Windows and PUBLISHES them as the
-#      GitHub Release assets that `slaide app` fetches from `releases/latest/download`:
-#        slaide-<os>-<arch>.<ext>            full bundle, flat: slaide-view, slaide-engine, themes
-#        slaide-engine-<os>-<arch>[.exe].gz  standalone engine (the viewer's Sign-in self-upgrade)
-#      each with a `.sha256`. These are the OSS binaries (no code signature) — the installer always
-#      verifies the checksum and, with no `.minisig` attached, falls back to checksum-only (verify.ts).
-#   2. publishes the `@aivorynet/slaide` package to npm with provenance (OIDC — no token needed).
-# Run it manually (workflow_dispatch) to smoke-test the build; manual runs skip the release + npm.
+# On a version tag (the GitLab mirror pushes `v*` here), this builds the native viewer + engine
+# on Linux, macOS and Windows and PUBLISHES them as the GitHub Release assets that `slaide app`
+# fetches from `releases/latest/download`:
+#   slaide-<os>-<arch>.<ext>            full bundle, flat: slaide-view, slaide-engine, themes
+#   slaide-engine-<os>-<arch>[.exe].gz  standalone engine (the viewer's Sign-in self-upgrade)
+# each with a `.sha256`. These are the OSS binaries (no code signature) — the installer always
+# verifies the checksum and, with no `.minisig` attached, falls back to checksum-only (verify.ts).
+# npm publishing is done BY HAND (`npm publish` from a maintainer machine) — the CI job never
+# worked on either host, so it was removed.
+# Run it manually (workflow_dispatch) to smoke-test the build; manual runs skip the release.
 
 on:
   push:
@@ -108,29 +109,4 @@ jobs:
             gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$tag" dist/* --repo "$GITHUB_REPOSITORY" --title "Slaide $tag" --generate-notes
-          fi
-
-  publish-npm:
-    name: Publish to npm
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: read
-      id-token: write   # OIDC trusted publishing + provenance (no token needed)
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest   # OIDC trusted publishing needs npm >= 11.5
-      - run: npm install --no-audit --no-fund
-      - run: npm run build
-      - name: Publish if this version is new
-        run: |
-          V=$(node -p "require('./package.json').version")
-          if npm view "@aivorynet/slaide@$V" version >/dev/null 2>&1; then
-            echo "@aivorynet/slaide@$V already published, skipping."
-          else
-            npm publish --provenance --access public
           fi
