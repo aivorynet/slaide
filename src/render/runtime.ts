@@ -42,7 +42,11 @@ export const RUNTIME_JS = String.raw`
     panX = Math.max(-ox, Math.min(ox, panX));
     panY = Math.max(-oy, Math.min(oy, panY));
   }
-  function cssVar(cs, name){ var n = parseFloat(cs.getPropertyValue(name)); return isFinite(n) ? n : 0; }
+  // A negative dock reservation is always nonsense — a garbage/buggy host write (e.g. a
+  // filmstrip that blows its viewport wider than the window) must never flip the fit or the
+  // stage translate negative. Floor every dock var (dl, dr, dt, db, notes) at 0 right here, so
+  // scale() below never sees one, on top of its own vw/fit clamps.
+  function cssVar(cs, name){ var n = parseFloat(cs.getPropertyValue(name)); return isFinite(n) ? Math.max(0, n) : 0; }
   function scale(){
     var pres = isPresenting();
     var cs = getComputedStyle(document.documentElement);
@@ -51,8 +55,11 @@ export const RUNTIME_JS = String.raw`
     // Bottom dock = chrome dock (bstrip/filmstrip, absolute) + notes reservation (independent), so
     // the two writers never clobber each other. .sl-notes sits at --slaide--dock-bottom (above the chrome).
     var db = pres ? 0 : cssVar(cs,'--slaide--dock-bottom') + cssVar(cs,'--slaide--dock-notes');
-    var vw = window.innerWidth - dl - dr, vh = window.innerHeight - dt - db;
-    var fit = Math.min(vw/CW, vh/CH);
+    // Clamp: a stale/over-sized dock reservation (e.g. a docked panel that hasn't been restyled
+    // for a narrow viewport) must never flip the fit negative — that mirrors + shrinks the stage
+    // to a black sliver instead of just cramming it small. See editor.ts's openInspector clamp.
+    var vw = Math.max(0, window.innerWidth - dl - dr), vh = Math.max(0, window.innerHeight - dt - db);
+    var fit = Math.max(0.08, Math.min(vw/CW, vh/CH));
     var s = fit * zoomFactor;
     if(zoomFactor<=1){ panX = panY = 0; } else { clampPan(s, vw, vh); }
     var tx = dl + (vw - CW*s)/2 + panX, ty = dt + (vh - CH*s)/2 + panY;

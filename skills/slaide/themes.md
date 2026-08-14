@@ -7,6 +7,7 @@ A **master** is a YAML file defining the whole visual system as data, so one the
 ```yaml
 schema: slaide/1
 name: my-theme
+prompt: "…"                                                  # optional AI guidance on using this theme
 brand:     { name, palette, fonts, logo, source, locked }   # optional: locked brand identity
 canvas:    { aspect: "16:9", width: 1920, height: 1080 }   # fixed design space, scaled to fit
 fonts:     { … }          # named roles, auto-imported from Google
@@ -108,6 +109,17 @@ brand:
   name: "Acme"
   logo: "<svg>…</svg>"   # inline mark, or an asset reference
   locked: true
+```
+
+## prompt
+
+Optional free-text guidance for the AI on how to use this theme — layout tips, variant intent, visual tone. The engine ignores it; the hosted agent reads it to make better layout/variant/style choices. Keep it under ~500 characters.
+
+```yaml
+prompt: >-
+  Use 'cover' for bold hero openings with a full-bleed visual.
+  Prefer the 'light' variant for data-heavy slides.
+  The 'statement' layout works best with exactly 3 stat cards.
 ```
 
 ## tokens

@@ -127,7 +127,7 @@ export function buildServer(): McpServer {
       description: 'List available master themes and their layouts.',
       inputSchema: {},
     },
-    async () => text(listThemes().map((t) => ({ name: t.name, layouts: t.layouts, description: t.description }))),
+    async () => text(listThemes().map((t) => ({ name: t.name, layouts: t.layouts, description: t.description, prompt: t.prompt }))),
   );
 
   // Resources: the language spec + theme/layout catalog (pull grammar on demand).

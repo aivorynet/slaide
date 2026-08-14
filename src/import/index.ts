@@ -31,6 +31,14 @@ export interface ImportResult {
   warnings: string[];
   /** Set when `slaidec` was requested: the single bundled output file. */
   slaidecPath?: string;
+  /** Per-media-file placement — one entry per file written into `assetsDir`, PLUS one entry for
+   *  every file dropped for being oversized (`reason: 'too-large'`, no bytes written anywhere).
+   *  Lets a caller distinguish "placed in the deck" from "kept but not individually rendered"
+   *  from "dropped, too large" without re-deriving it from the warnings text. */
+  assetManifest: { name: string; placed: boolean; reason?: string; bytes: number }[];
+  /** The same text written to `import-report.md` inside outDir — returned directly so a caller
+   *  that deletes outDir after the call (e.g. a stateless HTTP import endpoint) doesn't lose it. */
+  report: string;
 }
 
 async function importPptxFile(path: string, outDir: string, opts: ImportOptions): Promise<ImportResult> {
@@ -144,8 +152,15 @@ async function importPptxFile(path: string, outDir: string, opts: ImportOptions)
     }
   }
 
-  writeReport(outDir, ir, fidelity, rasterizedSlides);
-  return { outDir, deckPath, masterPath, slides: ir.slides.length, assets: ir.assets.length, fidelity, warnings: ir.warnings };
+  const report = writeReport(outDir, ir, fidelity, rasterizedSlides);
+  const assetManifest = [
+    ...ir.assets.map((a) => ({ name: a.name, placed: a.placed, reason: a.placed ? undefined : a.reason, bytes: a.data.length })),
+    ...ir.skippedAssets.map((a) => ({ name: a.name, placed: false, reason: a.reason, bytes: a.bytes })),
+  ];
+  return {
+    outDir, deckPath, masterPath, slides: ir.slides.length, assets: ir.assets.length, fidelity,
+    warnings: ir.warnings, assetManifest, report,
+  };
 }
 
 /** Below this per-slide visual match, a hybrid import keeps the slide as an image.
@@ -156,13 +171,15 @@ async function importPptxFile(path: string, outDir: string, opts: ImportOptions)
  *  pixel-fidelity, or use `--fidelity exact-raster` for an all-image (~99%) import. */
 const AUTO_RASTER_THRESHOLD = 0.85;
 
-function writeReport(outDir: string, ir: Awaited<ReturnType<typeof parsePptx>>, fidelity: Fidelity, rasterizedSlides = 0): void {
+function writeReport(outDir: string, ir: Awaited<ReturnType<typeof parsePptx>>, fidelity: Fidelity, rasterizedSlides = 0): string {
   const editable = ir.slides.length - rasterizedSlides;
+  const unplaced = ir.assets.filter((a) => !a.placed);
+  const skipped = ir.skippedAssets;
   const lines: string[] = [
     `# Import report\n`,
     `- Fidelity mode: **${fidelity}**`,
     `- Slides: ${ir.slides.length} (${editable} editable, ${rasterizedSlides} kept as faithful images)`,
-    `- Assets: ${ir.assets.length}`,
+    `- Assets: ${ir.assets.length + skipped.length} (${ir.assets.length - unplaced.length} placed, ${unplaced.length} kept but not placed, ${skipped.length} dropped — too large)`,
   ];
   if (ir.theme.nonGoogleFonts.length) lines.push(`- Non-Google fonts (system provider): ${ir.theme.nonGoogleFonts.join(', ')}`);
   let rasterCount = 0;
@@ -173,11 +190,27 @@ function writeReport(outDir: string, ir: Awaited<ReturnType<typeof parsePptx>>, 
       lines.push(`- Slide ${i + 1}: ${r} shape(s) left as gaps (raster unavailable)`);
     }
   });
-  if (ir.warnings.length) {
-    lines.push(`\n## Warnings`);
-    for (const w of ir.warnings) lines.push(`- ${w}`);
+  if (unplaced.length || skipped.length) {
+    lines.push(`\n## Media not placed`);
+    if (unplaced.length) {
+      lines.push(`Kept as project assets, but not automatically placed on any slide:`);
+      for (const a of unplaced) lines.push(`- ${a.name} (${a.reason ?? 'orphaned'})`);
+    }
+    if (skipped.length) {
+      lines.push(`Dropped entirely — exceeded the unplaced-media size budget, not kept:`);
+      for (const a of skipped) lines.push(`- ${a.name} (${(a.bytes / (1024 * 1024)).toFixed(1)} MB)`);
+    }
   }
-  writeFileSync(join(outDir, 'import-report.md'), lines.join('\n'));
+  // The per-file "imported but not placed" warning duplicates the structured "Media not placed"
+  // section above one-for-one — drop it here so each unplaced file is listed once, not twice.
+  const otherWarnings = ir.warnings.filter((w) => !w.startsWith('imported but not placed:'));
+  if (otherWarnings.length) {
+    lines.push(`\n## Warnings`);
+    for (const w of otherWarnings) lines.push(`- ${w}`);
+  }
+  const report = lines.join('\n');
+  writeFileSync(join(outDir, 'import-report.md'), report);
+  return report;
 }
 
 /** Convert a .key to .pptx via LibreOffice (legacy Keynote) or macOS Keynote. */

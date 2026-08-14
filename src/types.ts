@@ -135,6 +135,9 @@ export interface Master {
   schema?: string;
   name: string;
   description?: string;
+  /** Optional AI guidance on how to use this theme (layout tips, variant intent, visual tone).
+   *  Pure metadata — the engine ignores it; the hosted agent reads it. */
+  prompt?: string;
   /** Immutable brand identity (see MasterBrand). Metadata + lock; roles still drive the CSS. */
   brand?: MasterBrand;
   canvas?: { aspect?: string; width?: number; height?: number };

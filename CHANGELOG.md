@@ -6,6 +6,23 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- PowerPoint export keeps the deck's appearance. Slide backgrounds survive (an image or gradient
+  background is rasterised; a flat colour stays native), CSS gradients map to real DrawingML
+  gradient fills instead of collapsing to their first colour stop, and the chrome layer — logo,
+  footer, page numbers — is exported at all. Inline SVG graphics become pictures captured after
+  their CSS filters, so a white-on-dark logo stays white.
+- PowerPoint export no longer prints an SVG's stylesheet onto the slide. Text harvesting skipped
+  charts only, so the class rules and gradient ids inside an inline `<svg>` were emitted as copy.
+- PowerPoint export only embeds typefaces the slides actually use, and only faces whose own name
+  table matches the slot they fill. A family declared in the theme but never rendered used to be
+  embedded anyway, which PowerPoint reports as an error on open; a weight served under a different
+  family name (Google's 600 is "… SemiBold / Regular") used to be filed as bold, which it is not.
+- PowerPoint export no longer captures the present-mode toggle into the corner of every slide.
+- PowerPoint export measures each text box against the widest line it actually draws, so a
+  heading no longer breaks mid-word where PowerPoint sets the same font slightly wider.
+
 ## [1.2.4] - 2026-08-01
 
 ### Fixed

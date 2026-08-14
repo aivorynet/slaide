@@ -1,10 +1,10 @@
 // Copyright 2026 AIVory, Inc.
 // SPDX-License-Identifier: Apache-2.0
 // Post-process a pptxgenjs-generated .pptx (a zip) to add what pptxgenjs cannot emit:
-// slide transitions and per-paragraph build (entrance) animations. We splice small XML
-// fragments into each slide part rather than reparse it, because a full parse/serialize
-// round-trip of the DrawingML pptxgenjs writes risks reordering or re-encoding nodes and
-// corrupting an otherwise-valid deck.
+// slide transitions, per-paragraph build (entrance) animations, and gradient shape fills.
+// We splice small XML fragments into each slide part rather than reparse it, because a full
+// parse/serialize round-trip of the DrawingML pptxgenjs writes risks reordering or
+// re-encoding nodes and corrupting an otherwise-valid deck.
 //
 // OOXML slide child order is fixed: cSld, clrMapOvr, transition, timing, extLst. So a
 // <p:transition> is injected right after </p:clrMapOvr>, and <p:timing> right before
@@ -50,13 +50,32 @@ async function orderedSlidePaths(zip: JSZip): Promise<string[]> {
 export interface SlideAnim {
   transition?: TransitionSpec;
   builds?: ShapeBuildSpec[]; // text boxes in text-region order; each with a per-paragraph reveal flag
+  /** Gradient fills pptxgenjs cannot emit: shape name (`shapeName`) -> `<a:gradFill>` XML. */
+  fills?: Record<string, string>;
 }
 
 /**
- * Inject transitions and per-paragraph builds into a pptx in a single zip pass (one
- * loadAsync/generateAsync), in deck-slide order. Transitions go after <p:clrMapOvr>, build
- * <p:timing> before </p:sld>, so the slide stays schema-valid. Build failures are swallowed
- * per slide so a build never corrupts an otherwise-valid slide.
+ * Swap a named shape's solid fill for `frag`. The shape is found by its `<p:cNvPr name>`
+ * (pptxgenjs's `shapeName`), and only the fill that follows its `</a:prstGeom>` — the shape
+ * fill, never a run's `<a:solidFill>` — is replaced. Returns the XML unchanged when the
+ * shape or its fill is not found, so a miss degrades to the solid fallback colour.
+ */
+function replaceShapeFill(xml: string, name: string, frag: string): string {
+  const sp = new RegExp(`<p:sp>(?:(?!</p:sp>)[\\s\\S])*?name="${name}"[\\s\\S]*?</p:sp>`);
+  const block = xml.match(sp);
+  if (!block) return xml;
+  const patched = block[0].replace(
+    /(<\/a:prstGeom>)(<a:noFill\s*\/>|<a:solidFill>[\s\S]*?<\/a:solidFill>)/,
+    (_m, geom: string) => geom + frag,
+  );
+  return patched === block[0] ? xml : xml.replace(block[0], patched);
+}
+
+/**
+ * Inject gradient fills, transitions and per-paragraph builds into a pptx in a single zip
+ * pass (one loadAsync/generateAsync), in deck-slide order. Transitions go after
+ * <p:clrMapOvr>, build <p:timing> before </p:sld>, so the slide stays schema-valid. Build
+ * failures are swallowed per slide so a build never corrupts an otherwise-valid slide.
  */
 export async function injectAnim(pptxBuf: Buffer, anims: SlideAnim[], opts: { safe?: boolean } = {}): Promise<Buffer> {
   const zip = await JSZip.loadAsync(pptxBuf);
@@ -66,6 +85,16 @@ export async function injectAnim(pptxBuf: Buffer, anims: SlideAnim[], opts: { sa
     if (!a) continue;
     let xml = await zip.file(paths[i])!.async('string');
     let changed = false;
+
+    // Fills first: they only rewrite an existing <a:solidFill>, so shape order (which the
+    // build injection indexes into) is untouched.
+    for (const [name, frag] of Object.entries(a.fills ?? {})) {
+      const next = replaceShapeFill(xml, name, frag);
+      if (next !== xml) {
+        xml = next;
+        changed = true;
+      }
+    }
 
     if (a.transition && !xml.includes('<p:transition') && !xml.includes('mc:AlternateContent')) {
       const frag = transitionXml(a.transition.name, { durationMs: a.transition.durationMs, safe: opts.safe });

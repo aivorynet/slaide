@@ -22,6 +22,7 @@ export interface ThemeInfo {
   path: string;
   layouts: string[];
   description: string | null;
+  prompt: string | null;
 }
 
 export function listThemes(): ThemeInfo[] {
@@ -38,9 +39,10 @@ export function listThemes(): ThemeInfo[] {
           path,
           layouts: Object.keys(m?.layouts ?? {}),
           description: m?.description ?? null,
+          prompt: m?.prompt ?? null,
         };
       } catch {
-        return { name: basename(f), path, layouts: [], description: null };
+        return { name: basename(f), path, layouts: [], description: null, prompt: null };
       }
     });
 }

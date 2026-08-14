@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transitionXml, transitionChildXml, speedBucket } from '../src/export-pptx/transitions.js';
-import { injectTransitions, injectBuilds } from '../src/export-pptx/inject-anim.js';
+import { injectTransitions, injectBuilds, injectAnim } from '../src/export-pptx/inject-anim.js';
+import { gradFillXml } from '../src/export-pptx/gradient.js';
 
 // ---- transition name -> OOXML map (pure, always on) -------------------------
 describe('transition mapping', () => {
@@ -50,6 +51,39 @@ describe('transition mapping', () => {
   });
 });
 
+// ---- css gradient -> DrawingML gradient fill (pure, always on) --------------
+describe('gradient fill mapping', () => {
+  it('keeps a hard stop hard and pins both ends', () => {
+    // the card rail: 6px of accent, then the card colour for the rest
+    const xml = gradFillXml(
+      'linear-gradient(90deg, rgb(85, 174, 234) 0px, rgb(85, 174, 234) 6px, rgb(22, 40, 60) 6px)',
+      600,
+      120,
+    )!;
+    expect(xml).toContain('<a:lin ang="0" scaled="0"/>'); // css 90deg (to right) = ooxml 0
+    const stops = [...xml.matchAll(/<a:gs pos="(\d+)"><a:srgbClr val="(\w+)"/g)].map((m) => [m[1], m[2]]);
+    expect(stops).toEqual([
+      ['0', '55AEEA'],
+      ['1000', '55AEEA'],
+      ['1001', '16283C'], // hard edge: the next stop is 0.001% along, not a blend
+      ['100000', '16283C'], // css extends the last colour; DrawingML needs it said
+    ]);
+  });
+
+  it('spreads unpositioned stops, keeps alpha, and maps the angle', () => {
+    const xml = gradFillXml('linear-gradient(180deg, rgba(0, 123, 194, 0.34), rgb(0, 152, 136))', 400, 200)!;
+    expect(xml).toContain('<a:lin ang="5400000" scaled="0"/>'); // css 180deg (down) = ooxml 90deg
+    expect(xml).toContain('<a:gs pos="0"><a:srgbClr val="007BC2"><a:alpha val="34000"/>');
+    expect(xml).toContain('<a:gs pos="100000"><a:srgbClr val="009888"/></a:gs>');
+  });
+
+  it('declines what it cannot map faithfully', () => {
+    expect(gradFillXml('none', 100, 100)).toBeNull();
+    expect(gradFillXml('radial-gradient(rgb(1,2,3), rgb(4,5,6))', 100, 100)).toBeNull();
+    expect(gradFillXml('linear-gradient(90deg, rgb(1,2,3) 0px)', 100, 100)).toBeNull();
+  });
+});
+
 // ---- zip injection on a synthetic slide (pure, always on) -------------------
 // Two slides shaped like the pptxgenjs template; slide1 carries a text box (id 2).
 function synthDeck(): Promise<Buffer> {
@@ -64,8 +98,22 @@ function synthDeck(): Promise<Buffer> {
   );
   const sld = (sp: string) =>
     `<?xml version="1.0"?><p:sld xmlns:a="a" xmlns:r="r" xmlns:p="p"><p:cSld><p:spTree>${sp}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
-  zip.file('ppt/slides/slide1.xml', sld('<p:sp><p:nvSpPr><p:cNvPr id="2" name="t"/></p:nvSpPr><p:txBody><a:p><a:r><a:t>hi</a:t></a:r></a:p></p:txBody></p:sp>'));
-  zip.file('ppt/slides/slide2.xml', sld(''));
+  // slide1: a text box whose RUN carries a solidFill (the fill injector must not touch it).
+  // slide2: a fill-only shape named the way pptxgenjs writes `objectName`.
+  zip.file(
+    'ppt/slides/slide1.xml',
+    sld(
+      '<p:sp><p:nvSpPr><p:cNvPr id="2" name="t"/></p:nvSpPr><p:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>' +
+        '<p:txBody><a:p><a:r><a:rPr><a:solidFill><a:srgbClr val="ABCDEF"/></a:solidFill></a:rPr><a:t>hi</a:t></a:r></a:p></p:txBody></p:sp>',
+    ),
+  );
+  zip.file(
+    'ppt/slides/slide2.xml',
+    sld(
+      '<p:sp><p:nvSpPr><p:cNvPr id="2" name="slgrad0"/></p:nvSpPr><p:spPr><a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom>' +
+        '<a:solidFill><a:srgbClr val="55AEEA"/></a:solidFill><a:ln/></p:spPr></p:sp>',
+    ),
+  );
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 
@@ -96,6 +144,22 @@ describe('zip injection', () => {
     expect(s2).not.toContain('<p:timing>');
     // timing sits before </p:sld>
     expect(s1.indexOf('<p:timing>')).toBeLessThan(s1.indexOf('</p:sld>'));
+  });
+
+  it('swaps a named shape fill for a gradient and leaves run fills alone', async () => {
+    const grad = '<a:gradFill><a:gsLst/><a:lin ang="0" scaled="0"/></a:gradFill>';
+    const out = await injectAnim(await synthDeck(), [
+      { fills: { t: grad } }, // matches the text box, which has no shape fill to swap
+      { fills: { slgrad0: grad } },
+    ]);
+    const zip = await JSZip.loadAsync(out);
+    const s1 = await zip.file('ppt/slides/slide1.xml')!.async('string');
+    const s2 = await zip.file('ppt/slides/slide2.xml')!.async('string');
+    expect(s2).toContain('</a:prstGeom>' + grad);
+    expect(s2).not.toContain('55AEEA'); // the solid fallback is gone
+    // only the fill that follows </a:prstGeom> is swapped — the run's own colour survives
+    expect(s1).toContain('</a:prstGeom>' + grad);
+    expect(s1).toContain('<a:solidFill><a:srgbClr val="ABCDEF"/></a:solidFill>');
   });
 });
 

@@ -144,7 +144,15 @@ export interface ImportIR {
   canvas: { w: number; h: number };
   theme: { palette: Record<string, string>; fontMajor: string; fontMinor: string; nonGoogleFonts: string[] };
   slides: ImpSlide[];
-  assets: { name: string; data: Buffer }[];
+  /** Every media file under ppt/media/*, not just the ones a shape placed. `placed: false`
+   *  means the file was never individually rendered — it lived only inside a dropped subtree
+   *  (see `reason`) or wasn't referenced by any slide/layout/master at all ("orphaned"). Only
+   *  media within the unplaced size budget lands here — see `skippedAssets` for the rest. */
+  assets: { name: string; data: Buffer; placed: boolean; reason?: string }[];
+  /** Unplaced media dropped entirely because it exceeded SLAIDE_IMPORT_UNPLACED_MAX_MB (per-file)
+   *  or SLAIDE_IMPORT_UNPLACED_TOTAL_MB (running total) — no bytes kept, never written to disk or
+   *  base64-inlined by a caller. Placed media is never size-filtered. */
+  skippedAssets: { name: string; reason: string; bytes: number }[];
   warnings: string[];
 }
 
@@ -705,11 +713,56 @@ interface WalkCtx {
   minor: string;
   inherit: Inherit;
   resolveMedia: (embed: string | undefined) => string | undefined;
+  /** Resolve an r:embed/r:id to its raw ppt/media/* zip path — no "used" side effect (unlike
+   *  resolveMedia). Lets a dropped subtree (rasterized group/graphicFrame/custom shape) attribute
+   *  the media it contains to a reason without marking it individually placed. */
+  mediaPathFor: (embed: string | undefined) => string | undefined;
+  /** Record why a media file could not be individually placed (best-effort; first reason wins). */
+  markUnplaced: (mediaPath: string, reason: string) => void;
   nonGoogle: Set<string>;
   fieldText: (type: string | undefined, cached: string) => string;
   warnings: string[];
   /** When walking a layout/master, skip placeholder shapes (the slide fills those). */
   skipPlaceholders?: boolean;
+}
+
+/** Recursively collect every r:embed / r:id referenced anywhere in a subtree — used to attribute
+ *  media inside a dropped subtree (rasterized group/graphicFrame/custom shape) to a reason, even
+ *  though the subtree isn't walked shape-by-shape. */
+function collectEmbedIds(node: ONode, out: Set<string>): void {
+  const embed = oattr(node, 'r:embed');
+  if (embed) out.add(embed);
+  const link = oattr(node, 'r:link');
+  if (link) out.add(link);
+  for (const c of kids(node)) collectEmbedIds(c, out);
+}
+
+/** Tag every media file referenced inside a dropped subtree with `reason` (e.g. a complex group
+ *  about to be emitted as a single raster shape) so the asset manifest can explain why it wasn't
+ *  individually placed. */
+function markGroupMedia(node: ONode, ctx: WalkCtx, reason: string): void {
+  const embeds = new Set<string>();
+  collectEmbedIds(node, embeds);
+  for (const embed of embeds) {
+    const mediaPath = ctx.mediaPathFor(embed);
+    if (mediaPath) ctx.markUnplaced(mediaPath, reason);
+  }
+}
+
+/** Human-readable phrase for an unplaced-media reason token — used in the per-file warning. */
+function reasonLabel(reason: string): string {
+  return (
+    {
+      'complex-group': 'inside complex group',
+      'rotated-group': 'inside rotated group',
+      'graphic-frame': 'inside chart/SmartArt/embedded object',
+      'custom-geometry': 'inside custom-geometry shape',
+      connector: 'inside connector shape',
+      'shape-skipped': 'shape had no resolvable geometry',
+      'missing-rel': 'relationship target could not be resolved',
+      orphaned: 'not referenced by any slide',
+    }[reason] ?? reason
+  );
 }
 
 function insetsOf(bodyPr: ONode | undefined): { l: number; t: number; r: number; b: number } | undefined {
@@ -757,7 +810,10 @@ function handleSp(sp: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   const inh = phType ? ctx.inherit.ph[`${phType}#${phIdx}`] ?? ctx.inherit.ph[phType] : undefined;
   if (!box && inh?.box) box = inh.box;
   if (!box) {
-    // Last resort: skip but warn (truly geometry-less, e.g. an off-slide placeholder).
+    // Last resort: skip but warn (truly geometry-less, e.g. an off-slide placeholder). This
+    // shape IS referenced by the slide — attribute any media inside it accurately instead of
+    // letting it fall through to the default "orphaned" reason once dropped.
+    markGroupMedia(sp, ctx, 'shape-skipped');
     const probe = parseTxBody(ochild(sp, 'p:txBody'), ctx.color, ctx.major, ctx.minor, undefined, ctx.nonGoogle, ctx.fieldText);
     if (probe.length) ctx.warnings.push(`Skipped a ${phType ?? 'text'} shape with no resolvable geometry.`);
     return;
@@ -770,6 +826,7 @@ function handleSp(sp: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   // Custom geometry -> rasterize (we can't reproduce arbitrary paths).
   const prst = oattr(ochild(spPr, 'a:prstGeom'), 'prst');
   if (ochild(spPr, 'a:custGeom')) {
+    markGroupMedia(sp, ctx, 'custom-geometry');
     out.push({ kind: 'raster', ...box, rotation: rot || undefined, name, id, rasterReq: { name, id, reason: 'custom-geometry' } });
     return;
   }
@@ -836,10 +893,23 @@ function handlePic(pic: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   const spPr = ochild(pic, 'p:spPr');
   const xf = ochild(spPr, 'a:xfrm');
   const box = composedBoxOf(xf, T);
-  if (!box) return;
   const blip = odeep(ochild(pic, 'p:blipFill'), 'a:blip');
-  const src = ctx.resolveMedia(oattr(blip, 'r:embed'));
-  if (!src) return;
+  const embed = oattr(blip, 'r:embed');
+  if (!box) {
+    // No resolvable geometry, but this picture IS referenced by the slide — mark accurately
+    // rather than letting the dropped media default to "orphaned".
+    if (embed) markGroupMedia(pic, ctx, 'shape-skipped');
+    return;
+  }
+  const src = ctx.resolveMedia(embed);
+  if (!src) {
+    // r:embed is present but the relationship target could not be resolved.
+    if (embed) {
+      const mediaPath = ctx.mediaPathFor(embed);
+      if (mediaPath) ctx.markUnplaced(mediaPath, 'missing-rel');
+    }
+    return;
+  }
   const { name, id } = cNvName(ochild(pic, 'p:nvPicPr'));
   const rot = (xf ? Number(oattr(xf, 'rot') || 0) / 60000 : 0) + T.rot;
   out.push({ kind: 'image', ...box, src, name, id, rotation: rot || undefined });
@@ -859,6 +929,7 @@ function handleCxn(cxn: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
     // straight connectors the bbox is the line. Good enough for most diagrams.
     out.push({ kind: 'rect', ...box, name, id, fill: lnColor ?? '#888', rotation: T.rot || undefined });
   } else {
+    markGroupMedia(cxn, ctx, 'connector');
     out.push({ kind: 'raster', ...box, name, id, rasterReq: { name, id, reason: 'connector' } });
   }
 }
@@ -875,8 +946,13 @@ function handleGraphicFrame(gf: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) 
       return;
     }
   }
-  // Charts, SmartArt (dgm), OLE -> rasterize.
-  if (box) out.push({ kind: 'raster', ...box, name, id, rasterReq: { name, id, reason: 'graphic-frame' } });
+  // Charts, SmartArt (dgm), OLE -> rasterize. Any media referenced inside (chart background
+  // fills, SmartArt picture nodes, an OLE object's preview image) never gets an individual
+  // shape, so attribute it to the frame instead of leaving it unaccounted-for.
+  if (box) {
+    markGroupMedia(gf, ctx, 'graphic-frame');
+    out.push({ kind: 'raster', ...box, name, id, rasterReq: { name, id, reason: 'graphic-frame' } });
+  }
 }
 
 function parseTable(tbl: ONode, ctx: WalkCtx): ImpTable | undefined {
@@ -935,13 +1011,15 @@ function handleGroup(grp: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   // (recursing would shatter a curved mind-map into dozens of mismatched pieces).
   if (box && (rotDeg !== 0 || groupIsComplex(grp))) {
     const { name, id } = cNvName(ochild(grp, 'p:nvGrpSpPr'));
+    const reason = rotDeg ? 'rotated-group' : 'complex-group';
+    markGroupMedia(grp, ctx, reason);
     out.push({
       kind: 'raster',
       ...box,
       name,
       id,
       rotation: rotDeg || undefined,
-      rasterReq: { name, id, reason: rotDeg ? 'rotated-group' : 'complex-group' },
+      rasterReq: { name, id, reason },
     });
     return;
   }
@@ -1013,6 +1091,12 @@ export async function parsePptx(path: string): Promise<ImportIR> {
     if (/ppt\/media\//.test(f) && !zip.files[f].dir) mediaName[f] = f.split('/').pop()!;
   }
   const usedMedia = new Set<string>();
+  // Best-effort reason a media file was never individually placed (first reason wins).
+  // Anything left unset at the end but also never in usedMedia is "orphaned".
+  const mediaReason: Record<string, string> = {};
+  const markUnplaced = (mediaPath: string, reason: string) => {
+    if (!mediaReason[mediaPath]) mediaReason[mediaPath] = reason;
+  };
 
   // relationship resolver for a given part's .rels
   const relsFor = async (partPath: string): Promise<Record<string, string>> => {
@@ -1021,6 +1105,16 @@ export async function parsePptx(path: string): Promise<ImportIR> {
     const map: Record<string, string> = {};
     for (const rel of arr(xml?.['Relationships']?.['Relationship'])) map[rel['@_Id']] = rel['@_Target'];
     return map;
+  };
+
+  /** Resolve an r:embed/r:id against a given part's rels map to its raw ppt/media/* zip path
+   *  (pure lookup, no "used" side effect). */
+  const mkMediaPathFor = (rels: Record<string, string>) => (embed: string | undefined): string | undefined => {
+    if (!embed) return undefined;
+    const target = rels[embed];
+    if (!target) return undefined;
+    const mediaPath = 'ppt/' + target.replace(/^\.\.\//, '');
+    return mediaName[mediaPath] ? mediaPath : undefined;
   };
 
   // cache layout/master inheritance per layout part
@@ -1042,14 +1136,12 @@ export async function parsePptx(path: string): Promise<ImportIR> {
   for (const sp of slidePaths) {
     slideNo++;
     const slideRels = await relsFor(sp);
+    const slideMediaPathFor = mkMediaPathFor(slideRels);
     const resolveMedia = (embed: string | undefined): string | undefined => {
-      if (!embed) return undefined;
-      const target = slideRels[embed];
-      if (!target) return undefined;
-      const mediaPath = 'ppt/' + target.replace(/^\.\.\//, '');
-      const fname = mediaName[mediaPath];
-      if (fname) usedMedia.add(mediaPath);
-      return fname;
+      const mediaPath = slideMediaPathFor(embed);
+      if (!mediaPath) return undefined;
+      usedMedia.add(mediaPath);
+      return mediaName[mediaPath];
     };
 
     // resolve layout + master for this slide, and build inheritance once per layout
@@ -1095,19 +1187,20 @@ export async function parsePptx(path: string): Promise<ImportIR> {
         const layoutBg = bgFrom(odeep(layoutRoot, 'p:cSld'), ictx, () => undefined);
 
         // Design shapes from master + layout (non-placeholder) painted behind slide content.
-        const mkResolve = (rels: Record<string, string>) => (embed: string | undefined) => {
-          if (!embed) return undefined;
-          const target = rels[embed];
-          if (!target) return undefined;
-          const mediaPath = 'ppt/' + target.replace(/^\.\.\//, '');
-          const fname = mediaName[mediaPath];
-          if (fname) usedMedia.add(mediaPath);
-          return fname;
+        const mkResolve = (rels: Record<string, string>) => {
+          const pathFor = mkMediaPathFor(rels);
+          return (embed: string | undefined) => {
+            const mediaPath = pathFor(embed);
+            if (!mediaPath) return undefined;
+            usedMedia.add(mediaPath);
+            return mediaName[mediaPath];
+          };
         };
         const decoCtx = (rels: Record<string, string>): WalkCtx => ({
           color: ictx, major: fontMajor, minor: fontMinor,
           inherit: { ph, txStyles, decorations: [] },
-          resolveMedia: mkResolve(rels), nonGoogle: new Set(), fieldText, warnings, skipPlaceholders: true,
+          resolveMedia: mkResolve(rels), mediaPathFor: mkMediaPathFor(rels), markUnplaced,
+          nonGoogle: new Set(), fieldText, warnings, skipPlaceholders: true,
         });
         const decorations: ImpShape[] = [];
         const showMaster = oattr(odeep(layoutRoot, 'p:sldLayout'), 'showMasterSp');
@@ -1149,6 +1242,8 @@ export async function parsePptx(path: string): Promise<ImportIR> {
       minor: fontMinor,
       inherit,
       resolveMedia,
+      mediaPathFor: slideMediaPathFor,
+      markUnplaced,
       nonGoogle,
       fieldText: slideFieldText,
       warnings,
@@ -1182,11 +1277,33 @@ export async function parsePptx(path: string): Promise<ImportIR> {
     slides.push({ shapes, notes, background: slideBg });
   }
 
-  // assets (only used media)
-  const assets: { name: string; data: Buffer }[] = [];
+  // assets: EVERY media file under ppt/media/*, not only what a shape placed. Anything not
+  // individually rendered is still kept (never silently dropped) and tagged with why, so the
+  // caller can surface it as "imported but not placed" rather than losing it outright — EXCEPT
+  // an unplaced file that blows the size budget: base64-inlining every orphaned multi-MB media
+  // file is what balloons /v1/import by hundreds of MB, so oversized unplaced media is dropped
+  // into `skippedAssets` instead (no bytes kept). Placed media is never size-filtered.
+  const unplacedMaxBytes = (Number(process.env.SLAIDE_IMPORT_UNPLACED_MAX_MB) || 15) * 1024 * 1024;
+  const unplacedTotalBytes = (Number(process.env.SLAIDE_IMPORT_UNPLACED_TOTAL_MB) || 60) * 1024 * 1024;
+  const assets: { name: string; data: Buffer; placed: boolean; reason?: string }[] = [];
+  const skippedAssets: { name: string; reason: string; bytes: number }[] = [];
+  let unplacedBytes = 0;
   for (const [mpath, fname] of Object.entries(mediaName)) {
-    if (!usedMedia.has(mpath)) continue;
-    assets.push({ name: fname, data: await zip.files[mpath].async('nodebuffer') });
+    const data = await zip.files[mpath].async('nodebuffer');
+    const placed = usedMedia.has(mpath);
+    if (placed) {
+      assets.push({ name: fname, data, placed: true });
+      continue;
+    }
+    const reason = mediaReason[mpath] ?? 'orphaned';
+    if (data.length > unplacedMaxBytes || unplacedBytes + data.length > unplacedTotalBytes) {
+      warnings.push(`skipped (too large): ${fname} (${(data.length / (1024 * 1024)).toFixed(1)} MB, unplaced/${reasonLabel(reason)})`);
+      skippedAssets.push({ name: fname, reason: 'too-large', bytes: data.length });
+      continue;
+    }
+    unplacedBytes += data.length;
+    warnings.push(`imported but not placed: ${fname} (${reasonLabel(reason)})`);
+    assets.push({ name: fname, data, placed: false, reason });
   }
 
   const palette: Record<string, string> = { ...scheme };
@@ -1196,6 +1313,7 @@ export async function parsePptx(path: string): Promise<ImportIR> {
     theme: { palette, fontMajor, fontMinor, nonGoogleFonts: [...deckNonGoogle] },
     slides,
     assets,
+    skippedAssets,
     warnings,
   };
 }
