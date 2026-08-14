@@ -6,6 +6,8 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-08-14
+
 ### Fixed
 
 - PowerPoint export keeps the deck's appearance. Slide backgrounds survive (an image or gradient
