@@ -6,6 +6,14 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-08-15
+
+### Changed
+
+- Images and videos render square. The 8px corner rounding was a renderer default that no theme
+  could turn off, and it applied to `.sl-img` and `.sl-video` alike. A theme that wants rounded
+  corners still sets its own `border-radius`; `.sl-img.round` is unchanged.
+
 ## [1.2.6] - 2026-08-15
 
 ### Fixed
@@ -171,7 +179,8 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.6...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.7...HEAD
+[1.2.7]: https://github.com/aivorynet/slaide/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/aivorynet/slaide/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/aivorynet/slaide/compare/v1.2.4...v1.2.5
 [1.2.4]: https://github.com/aivorynet/slaide/compare/v1.2.3...v1.2.4
