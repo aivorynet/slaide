@@ -19,6 +19,11 @@ export interface ImportOptions {
   rasterThreshold?: number;
   /** Bundle the result into a single self-contained `.slaidec` (and drop the folder). */
   slaidec?: boolean;
+  /** Emit a hint region for every picture placeholder the source leaves empty, so an imported
+   *  TEMPLATE arrives with its image drop zones. Off by default: PowerPoint paints those boxes
+   *  in its editor but not in a slideshow or a PDF, so a finished deck would gain text the
+   *  original never shows. */
+  placeholders?: boolean;
 }
 
 export interface ImportResult {
@@ -42,7 +47,7 @@ export interface ImportResult {
 }
 
 async function importPptxFile(path: string, outDir: string, opts: ImportOptions): Promise<ImportResult> {
-  const ir = await parsePptx(path);
+  const ir = await parsePptx(path, { placeholders: opts.placeholders });
   const assetsDir = join(outDir, 'assets');
   mkdirSync(outDir, { recursive: true });
   mkdirSync(assetsDir, { recursive: true });

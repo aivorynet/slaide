@@ -40,7 +40,15 @@ Convert existing decks into `.slaide` plus a generated master, as faithfully as 
 - **`reconstruct`** is pure, cross-platform, and fully editable (no PowerPoint needed).
 - **`exact-raster`** makes each slide a pixel-perfect PNG from PowerPoint (about 99% match; archival, not editable).
 
-All modes compute autofit-effective sizes and resolve scheme colors to RGB.
+All modes compute autofit-effective sizes and resolve scheme colors to RGB, and honour a
+picture's `a:srcRect` crop.
+
+## Templates (`--placeholders`)
+
+A layout can carry an empty `<p:ph type="pic"/>` — PowerPoint's click-to-add box. Import drops
+it by default, because PowerPoint paints that box in its editor and nowhere else: a finished
+deck would gain text the original never shows. Pass `--placeholders` when the input is a
+template you intend to author against, and each unfilled box arrives as an image drop zone.
 
 ## Architecture
 

@@ -104,13 +104,40 @@ export const CHARTS_BOOT_JS = String.raw`
       el.innerHTML = '<pre style="white-space:pre-wrap;font-size:.6em;opacity:.7">'+String((e&&e.message)||e)+'</pre>';
     });
   }
+  // How much vertical room the chart really has: from its own top edge down to the
+  // bottom of the slide's content box, less anything stacked below it in the same
+  // column. Returns 0 when that can't be worked out.
+  function roomBelow(el){
+    var layer = el.closest ? el.closest('.sl-layer-content') : null;
+    if(!layer || !layer.clientHeight) return 0;
+    var lr = layer.getBoundingClientRect(), er = el.getBoundingClientRect();
+    var floorY = lr.bottom - (parseFloat(window.getComputedStyle(layer).paddingBottom)||0);
+    var room = floorY - er.top;
+    var kids = layer.getElementsByTagName('*');
+    for(var i=0;i<kids.length;i++){
+      var k = kids[i];
+      if(k === el || el.contains(k) || k.contains(el)) continue;
+      var r = k.getBoundingClientRect();
+      if(!r.height || r.top < er.bottom - 1) continue;                  // above, or overlapping
+      if(r.right <= er.left + 1 || r.left >= er.right - 1) continue;    // another column
+      room = Math.min(room, floorY - er.top - r.height);
+    }
+    return Math.floor(room);
+  }
   function renderEchart(el){
     if(!ensure('echart')) return Promise.resolve();
     var opt;
     try{ opt = JSON.parse(b64decode(el.getAttribute('data-option'))); }
     catch(e){ return Promise.resolve(); }
+    // A chart in a content-sized grid row has no definite height to resolve against, so
+    // it either collapses to 0 or takes an aspect-ratio guess that runs off the bottom of
+    // the slide — bars clipped, category axis gone, and nothing says so. Guess only when
+    // there is no height at all, and cap the result at the room the slide actually has.
     var w = el.clientWidth||600, h = el.clientHeight;
-    if(!h){ h = Math.round(w*0.58); el.style.height = h+'px'; }   // avoid 0-height collapse
+    var room = roomBelow(el);
+    if(!h) h = Math.round(w*0.58);
+    if(room > 60 && h > room) h = room;
+    if(h !== el.clientHeight) el.style.height = h+'px';
     el.setAttribute('data-rendered','1');
     try{
       var inst = window.echarts.init(el, 'slaide', { renderer:'svg', width:w, height:h });

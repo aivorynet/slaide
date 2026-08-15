@@ -267,3 +267,178 @@ test('a referenced but geometry-less picture is tagged shape-skipped, not orphan
     rmSync(file, { force: true });
   }
 });
+
+// --- CHANGE 1: a:srcRect crop insets. ---
+const THEME_XML =
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+  `<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Test">` +
+  `<a:themeElements><a:clrScheme name="Test">` +
+  `<a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>` +
+  `<a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1>` +
+  `<a:dk2><a:srgbClr val="1F1F1F"/></a:dk2><a:lt2><a:srgbClr val="EEEEEE"/></a:lt2>` +
+  `<a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2>` +
+  `<a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4>` +
+  `<a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6>` +
+  `<a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink>` +
+  `</a:clrScheme><a:fontScheme name="Test"><a:majorFont><a:latin typeface="Inter"/></a:majorFont>` +
+  `<a:minorFont><a:latin typeface="Inter"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>`;
+const PRESENTATION_XML =
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+  `<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+  `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
+  `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+  `<p:sldSz cx="12192000" cy="6858000"/></p:presentation>`;
+
+function picXml(id: number, name: string, rId: string, srcRect: string): string {
+  return (
+    `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${name}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
+    `<p:blipFill><a:blip r:embed="${rId}"/>${srcRect}</p:blipFill>` +
+    `<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm></p:spPr></p:pic>`
+  );
+}
+
+async function buildPptxWithCrop(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', PRESENTATION_XML);
+  zip.file('ppt/_rels/presentation.xml.rels', RELS_XML([]));
+  zip.file('ppt/theme/theme1.xml', THEME_XML);
+  zip.file('ppt/slides/slide1.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
+    `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    `<p:cSld><p:spTree>` +
+    `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+    // Asymmetric two-axis crop: 10% off the left, 20% off the bottom, nothing off top/right.
+    picXml(10, 'Cropped', 'rId1', `<a:srcRect l="10000" b="20000"/>`) +
+    // No srcRect at all -> must import unaffected (no `crop` field).
+    picXml(11, 'Uncropped', 'rId2', ``) +
+    // srcRect present but all-zero -> same as no crop.
+    picXml(12, 'ZeroCrop', 'rId3', `<a:srcRect l="0" t="0" r="0" b="0"/>`) +
+    `</p:spTree></p:cSld></p:sld>`);
+  zip.file('ppt/slides/_rels/slide1.xml.rels', RELS_XML([
+    ['rId1', '../media/image1.png'], ['rId2', '../media/image2.png'], ['rId3', '../media/image3.png'],
+  ]));
+  zip.file('ppt/media/image1.png', Buffer.from('cropped-image-bytes'));
+  zip.file('ppt/media/image2.png', Buffer.from('uncropped-image-bytes'));
+  zip.file('ppt/media/image3.png', Buffer.from('zero-crop-image-bytes'));
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
+test('parsePptx reads a:srcRect into crop fractions; absent/all-zero -> no crop field', async () => {
+  const buf = await buildPptxWithCrop();
+  const file = join(tmpdir(), `slaide-import-test-crop-${Date.now()}.pptx`);
+  writeFileSync(file, buf);
+  try {
+    const ir = await parsePptx(file);
+    const shapes = ir.slides[0].shapes;
+    const cropped = shapes.find((s) => s.src === 'image1.png');
+    const uncropped = shapes.find((s) => s.src === 'image2.png');
+    const zeroCrop = shapes.find((s) => s.src === 'image3.png');
+    // l="10000"/b="20000" (thousandths of a percent) -> fractions 0.1 / 0.2, other edges 0.
+    expect(cropped?.crop).toEqual({ l: 0.1, t: 0, r: 0, b: 0.2 });
+    expect(uncropped?.crop).toBeUndefined();
+    expect(zeroCrop?.crop).toBeUndefined();
+  } finally {
+    rmSync(file, { force: true });
+  }
+});
+
+// --- CHANGE 2: empty picture placeholders (`<p:ph type="pic"/>` with no picture) still
+// become a real, visible drop zone, resolved via slide -> layout -> master geometry. ---
+async function buildPptxWithPicPlaceholder(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file('ppt/presentation.xml', PRESENTATION_XML);
+  zip.file('ppt/_rels/presentation.xml.rels', RELS_XML([]));
+  zip.file('ppt/theme/theme1.xml', THEME_XML);
+
+  zip.file('ppt/slideMasters/slideMaster1.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<p:sldMaster xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>` +
+    `</p:sldMaster>`);
+  zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>` +
+    `</Relationships>`);
+
+  // Layout: an empty picture placeholder (idx="1") at a known box, no p:pic anywhere.
+  zip.file('ppt/slideLayouts/slideLayout1.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<p:sldLayout xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+    `<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+    `<p:sp><p:nvSpPr><p:cNvPr id="5" name="Picture Placeholder 4"/><p:cNvSpPr/>` +
+    `<p:nvPr><p:ph type="pic" idx="1"/></p:nvPr></p:nvSpPr>` +
+    `<p:spPr><a:xfrm><a:off x="1000000" y="2000000"/><a:ext cx="3000000" cy="1500000"/></a:xfrm></p:spPr></p:sp>` +
+    `</p:spTree></p:cSld></p:sldLayout>`);
+  zip.file('ppt/slideLayouts/_rels/slideLayout1.xml.rels',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>` +
+    `</Relationships>`);
+
+  const slideRelsToLayout =
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`;
+
+  // Slide 1: does NOT fill the placeholder -> the hint region must appear.
+  zip.file('ppt/slides/slide1.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
+    `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    `<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+    `</p:spTree></p:cSld></p:sld>`);
+  zip.file('ppt/slides/_rels/slide1.xml.rels', slideRelsToLayout + `</Relationships>`);
+
+  // Slide 2: DOES fill the placeholder with a real picture (same type#idx) -> no hint.
+  zip.file('ppt/slides/slide2.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" ` +
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
+    `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    `<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+    `<p:pic><p:nvPicPr><p:cNvPr id="5" name="Picture Placeholder 4"/><p:cNvPicPr/>` +
+    `<p:nvPr><p:ph type="pic" idx="1"/></p:nvPr></p:nvPicPr>` +
+    `<p:blipFill><a:blip r:embed="rId2"/></p:blipFill>` +
+    `<p:spPr><a:xfrm><a:off x="1000000" y="2000000"/><a:ext cx="3000000" cy="1500000"/></a:xfrm></p:spPr></p:pic>` +
+    `</p:spTree></p:cSld></p:sld>`);
+  zip.file('ppt/slides/_rels/slide2.xml.rels',
+    slideRelsToLayout +
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>` +
+    `</Relationships>`);
+  zip.file('ppt/media/image1.png', Buffer.from('filled-placeholder-bytes'));
+
+  return zip.generateAsync({ type: 'nodebuffer' });
+}
+
+test('an unfilled p:ph type="pic" layout placeholder becomes a routed hint region; a filled one does not', async () => {
+  const buf = await buildPptxWithPicPlaceholder();
+  const file = join(tmpdir(), `slaide-import-test-picph-${Date.now()}.pptx`);
+  writeFileSync(file, buf);
+  try {
+    // Off by default: PowerPoint shows an empty placeholder in its editor, never in a
+    // slideshow or a PDF, so a plain deck import must not gain text the original hides.
+    const plain = await parsePptx(file);
+    expect(plain.slides[0].shapes.some((s) => s.ph === 'pic')).toBe(false);
+
+    const ir = await parsePptx(file, { placeholders: true });
+    expect(ir.slides.length).toBe(2);
+
+    // Slide 1 never fills the placeholder -> a text hint at the layout's resolved geometry.
+    const hint = ir.slides[0].shapes.find((s) => s.ph === 'pic');
+    expect(hint).toBeDefined();
+    expect(hint).toMatchObject({ kind: 'text', x: 79, y: 157, w: 236, h: 118 });
+    expect(hint?.paras?.[0]?.runs?.[0]?.text?.length).toBeGreaterThan(0);
+    // It must not be dropped once compiled — non-empty html is required (compile.ts drops
+    // any region whose rendered html is empty).
+    expect((hint?.paras ?? []).map((p) => p.runs.map((r) => r.text).join('')).join('').trim()).not.toBe('');
+
+    // Slide 2 fills the same placeholder with a real picture -> no hint, real image present.
+    expect(ir.slides[1].shapes.some((s) => s.ph === 'pic')).toBe(false);
+    expect(ir.slides[1].shapes.some((s) => s.kind === 'image' && s.src === 'image1.png')).toBe(true);
+  } finally {
+    rmSync(file, { force: true });
+  }
+});

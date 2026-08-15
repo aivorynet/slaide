@@ -149,6 +149,22 @@ struct Meta {
     // the OSS engine omits it (→ false), so the viewer shows no Edit button.
     #[serde(default)]
     editable: bool,
+    // Sign-in status (Pro engine, `--meta` only); absent on the OSS engine or a signed-out
+    // Pro one, in which case the ribbon must fall back to `{state:'none'}` ("Sign in").
+    #[serde(default)]
+    license: Option<License>,
+}
+
+/// Mirrors the Pro engine's `LicenseStatus` (pro/packages/editor/src/license.ts) and the
+/// shape ribbon.html's account button expects at window.__SLV_LICENSE__ (`{state, tier,
+/// email}`). `state` is one of "active" | "trial" | "hosted" | "free" | "none".
+#[derive(Default, Clone, serde::Deserialize, serde::Serialize)]
+struct License {
+    state: String,
+    #[serde(default)]
+    tier: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
 }
 
 #[derive(Default, Clone, Copy, serde::Deserialize)]
@@ -275,7 +291,7 @@ fn run(args: Vec<String>) -> Result<()> {
     // NOT file://. wry's WebView2 IPC handler builds an http::Uri from the document URL
     // and unwraps it — a file:// URL fails that parse and panics on every IPC message.
     // A custom protocol also sidesteps the ~2 MB NavigateToString limit.
-    let state = Arc::new(Mutex::new(if present { html } else { inject_toolbar(&html, meta.editable, &monitor_names, chat.as_ref()) }));
+    let state = Arc::new(Mutex::new(if present { html } else { inject_toolbar(&html, meta.editable, meta.license.as_ref(), &monitor_names, chat.as_ref()) }));
     // When set, the protocol serves this (toolbar-free, print-mode) HTML instead of
     // `state` — used transiently while exporting a PDF, then cleared.
     let serve_override: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -718,7 +734,7 @@ fn reload(engine: &Path, deck: &Path, webview: &wry::WebView, window: &tao::wind
                     drop(serve.take());
                     None
                 };
-                inject_toolbar(&h, meta.editable, &display_names(window), chat.as_ref())
+                inject_toolbar(&h, meta.editable, meta.license.as_ref(), &display_names(window), chat.as_ref())
             }
         }
         Err(e) => error_page(&e.to_string()),
@@ -979,7 +995,7 @@ fn display_names(window: &tao::window::Window) -> Vec<String> {
         .collect()
 }
 
-fn inject_toolbar(html: &str, editable: bool, monitors: &[String], chat: Option<&(String, String)>) -> String {
+fn inject_toolbar(html: &str, editable: bool, license: Option<&License>, monitors: &[String], chat: Option<&(String, String)>) -> String {
     // The viewer chrome (auto-hiding ribbon + thumbnail navigator + zoom controls)
     // lives in its own file so the HTML/CSS/JS is editable as such.
     // include_str! bakes it in at compile time; cargo rebuilds when it changes.
@@ -987,6 +1003,8 @@ fn inject_toolbar(html: &str, editable: bool, monitors: &[String], chat: Option<
     // Runtime config handed to the ribbon before its script runs:
     //  - __SLV_EDITABLE__: the Edit affordance is dormant unless the engine reported
     //    editing is available (Pro engine + license) — this flag is the single gate.
+    //  - __SLV_LICENSE__: sign-in status ({state, tier, email}) for the account button —
+    //    "none" reads as "Sign in"; anything else shows the signed-in tier + email.
     //  - __SLV_PREFS__: persisted docked/slides-panel state, applied on load.
     //  - __SLV_MONITORS__: display names, so the Present button can offer a per-display picker.
     let prefs = serde_json::to_string(&load_prefs()).unwrap_or_else(|_| "{}".to_string());
@@ -995,6 +1013,10 @@ fn inject_toolbar(html: &str, editable: bool, monitors: &[String], chat: Option<
     if editable {
         head.push_str("<script>window.__SLV_EDITABLE__=true;</script>\n");
     }
+    let lic_json = license
+        .and_then(|l| serde_json::to_string(l).ok())
+        .unwrap_or_else(|| "{\"state\":\"none\"}".to_string());
+    head.push_str(&format!("<script>window.__SLV_LICENSE__={lic_json};</script>\n"));
     // Native Keynote export only works on macOS; the ribbon grays it out elsewhere.
     if cfg!(target_os = "macos") {
         head.push_str("<script>window.__SLV_MAC__=true;</script>\n");

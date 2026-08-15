@@ -6,6 +6,44 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.8] - 2026-08-15
+
+### Added
+
+- PowerPoint import honours a picture's crop. `a:srcRect` was ignored, so every cropped photo
+  arrived uncropped and mis-framed. The picture is now scaled and offset inside a clipping box,
+  which reproduces an asymmetric crop as exactly as a centred one.
+- `slaide import --placeholders` keeps a template's empty picture boxes as image drop zones. An
+  unfilled `<p:ph type="pic"/>` used to vanish, so a corporate template imported with nowhere to
+  put a picture. It stays opt-in: PowerPoint paints that box in its editor and nowhere else, so a
+  finished deck must not gain text the original never shows.
+
+### Changed
+
+- Three more renderer defaults become theme tokens, at the values they already had, so nothing
+  looks different until a theme says otherwise: `--embed-radius` (embeds and widgets),
+  `--code-inline-radius` (inline code), and `--quote-rule` / `--quote-pad` / `--quote-style`
+  (the blockquote's accent rule, indent, and italics). Each was a fixed decoration no theme
+  could reach — the same complaint that made images square in 1.2.7.
+
+### Fixed
+
+- Media and image slots keep their picture inside the cell. A slot laid its child out on a grid,
+  where `height:100%` resolves against a grid area the child itself sizes — a cycle CSS settles as
+  `auto`, so the picture fell back to its natural height and ran off the slide with nothing to say
+  so. A 900px photo in a 120px strip covered the text below it. Slots are flex columns now, and
+  the percentage height resolves for real.
+- The viewer shows that Sign in worked. The ribbon's account button reads `window.__SLV_LICENSE__`,
+  which nothing ever set, so a successful sign-in still read "Sign in" and the next click restarted
+  the whole flow. The engine reports the status and the viewer injects it.
+- A missing Pro engine build says so. On an OSS install, Sign in downloads the Pro engine from the
+  GitHub release first; when that release carries no build for the running platform, the 404
+  reached the user as raw network text in a "Sign-in failed" dialog.
+- Charts stay inside the slide. A chart in a content-sized row guessed its height from its width
+  (`width × 0.58`) and could end up taller than the space left, which clipped the bars and cut the
+  category axis away entirely. The guess is now capped at the room below the chart, and it only
+  applies when the chart has no height at all.
+
 ## [1.2.7] - 2026-08-15
 
 ### Changed
@@ -179,7 +217,8 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.7...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.8...HEAD
+[1.2.8]: https://github.com/aivorynet/slaide/compare/v1.2.7...v1.2.8
 [1.2.7]: https://github.com/aivorynet/slaide/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/aivorynet/slaide/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/aivorynet/slaide/compare/v1.2.4...v1.2.5

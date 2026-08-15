@@ -117,6 +117,9 @@ export interface ImpShape {
   id?: string; // cNvPr id
   paras?: ImpPara[];
   src?: string; // asset filename (image / rasterized)
+  /** a:srcRect crop insets, as fractions (0..1) of the SOURCE image, one edge each.
+   *  Only set when at least one inset is non-zero. */
+  crop?: { l: number; t: number; r: number; b: number };
   fill?: string; // rect background (css color or gradient)
   stroke?: { color: string; width: number };
   valign?: 'top' | 'center' | 'bottom';
@@ -795,6 +798,22 @@ function cNvName(nv: ONode | undefined): { name?: string; id?: string } {
   return { name: oattr(cNvPr, 'name'), id: oattr(cNvPr, 'id') };
 }
 
+/** Collect every `${type}#${idx}` placeholder key actually present as a shape (sp/pic/
+ *  graphicFrame/cxnSp, recursing into groups) in this spTree — used to tell an unfilled
+ *  layout/master placeholder (e.g. an empty picture drop zone) from one the slide fills. */
+function collectPhKeys(node: ONode | undefined, into: Set<string>): void {
+  for (const c of kids(node)) {
+    const t = tagOf(c);
+    const nvTag =
+      t === 'p:pic' ? 'p:nvPicPr' : t === 'p:graphicFrame' ? 'p:nvGraphicFramePr' : t === 'p:cxnSp' ? 'p:nvCxnSpPr' : t === 'p:sp' ? 'p:nvSpPr' : undefined;
+    if (nvTag) {
+      const ph = odeep(ochild(c, nvTag), 'p:ph');
+      if (ph) into.add(`${oattr(ph, 'type') ?? 'body'}#${oattr(ph, 'idx') ?? ''}`);
+    }
+    if (t === 'p:grpSp') collectPhKeys(c, into);
+  }
+}
+
 function handleSp(sp: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   const nv = ochild(sp, 'p:nvSpPr');
   const ph = odeep(nv, 'p:ph');
@@ -889,11 +908,28 @@ function handleSp(sp: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   // else: an unfilled, textless shape — nothing to render.
 }
 
+/** a:srcRect l/t/r/b -> fractions (0..1) of the source image, or undefined when the
+ *  element is absent or all four insets are zero (no crop -> byte-identical import). */
+function cropFromBlipFill(blipFill: ONode | undefined): { l: number; t: number; r: number; b: number } | undefined {
+  const rect = ochild(blipFill, 'a:srcRect');
+  if (!rect) return undefined;
+  const l = Number(oattr(rect, 'l') ?? 0) / 100000;
+  const t = Number(oattr(rect, 't') ?? 0) / 100000;
+  const r = Number(oattr(rect, 'r') ?? 0) / 100000;
+  const b = Number(oattr(rect, 'b') ?? 0) / 100000;
+  if (!l && !t && !r && !b) return undefined;
+  // Degenerate/invalid insets (visible extent <= 0) can't be reproduced by scaling — skip
+  // the crop rather than emit a garbage transform; the image imports uncropped instead.
+  if (1 - l - r <= 0 || 1 - t - b <= 0) return undefined;
+  return { l, t, r, b };
+}
+
 function handlePic(pic: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   const spPr = ochild(pic, 'p:spPr');
   const xf = ochild(spPr, 'a:xfrm');
   const box = composedBoxOf(xf, T);
-  const blip = odeep(ochild(pic, 'p:blipFill'), 'a:blip');
+  const blipFill = ochild(pic, 'p:blipFill');
+  const blip = odeep(blipFill, 'a:blip');
   const embed = oattr(blip, 'r:embed');
   if (!box) {
     // No resolvable geometry, but this picture IS referenced by the slide — mark accurately
@@ -912,7 +948,8 @@ function handlePic(pic: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
   }
   const { name, id } = cNvName(ochild(pic, 'p:nvPicPr'));
   const rot = (xf ? Number(oattr(xf, 'rot') || 0) / 60000 : 0) + T.rot;
-  out.push({ kind: 'image', ...box, src, name, id, rotation: rot || undefined });
+  const crop = cropFromBlipFill(blipFill);
+  out.push({ kind: 'image', ...box, src, name, id, rotation: rot || undefined, crop });
 }
 
 function handleCxn(cxn: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
@@ -1029,7 +1066,7 @@ function handleGroup(grp: ONode, T: Xform, ctx: WalkCtx, out: ImpShape[]) {
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
-export async function parsePptx(path: string): Promise<ImportIR> {
+export async function parsePptx(path: string, opts: { placeholders?: boolean } = {}): Promise<ImportIR> {
   const warnings: string[] = [];
   const zip = await JSZip.loadAsync(readFileSync(path));
   const readStr = async (p: string): Promise<string | null> => {
@@ -1251,6 +1288,36 @@ export async function parsePptx(path: string): Promise<ImportIR> {
     // Layout/master design shapes paint behind the slide's own content.
     const shapes: ImpShape[] = inherit.decorations.map((d) => ({ ...d }));
     walkTree(spTree, IDENTITY, walk, shapes);
+
+    // Empty picture placeholders: a layout/master can carry `<p:ph type="pic"/>` with no
+    // picture in it (PowerPoint's click-to-add box). Decorations skip ALL placeholders
+    // (the slide is expected to fill them), so one this slide never fills would otherwise
+    // vanish entirely — and a corporate template imports with no image drop zones at all.
+    // Emit a routed hint region for each unfilled one; a slot with no content is dropped by
+    // the compiler, so this must carry visible text.
+    //
+    // OPT-IN, because it is a deliberate divergence: PowerPoint paints an unfilled
+    // placeholder in its editor but NOT in a slideshow or a PDF, so a plain deck import
+    // would gain text the original never shows. Worth it when the input is a template you
+    // intend to author against, wrong when it is a finished deck.
+    if (opts.placeholders) {
+      const filledPh = new Set<string>();
+      collectPhKeys(spTree, filledPh);
+      for (const [key, info] of Object.entries(inherit.ph)) {
+        if (!key.startsWith('pic#') || filledPh.has(key)) continue;
+        if (!info.box) {
+          warnings.push('Skipped an empty picture placeholder with no resolvable geometry.');
+          continue;
+        }
+        shapes.push({
+          kind: 'text',
+          ...info.box,
+          ph: 'pic',
+          valign: 'center',
+          paras: [{ runs: [{ text: 'Picture placeholder' }], align: 'ctr' }],
+        });
+      }
+    }
 
     // background: slide > layout > master
     const slideBg = bgFrom(cSld, colorCtx, resolveMedia) ?? inherit.background;

@@ -71,7 +71,33 @@ function tableMd(shape: ImpShape): string {
   return lines.join('\n');
 }
 
+/** Reproduce an `a:srcRect` crop exactly, incl. asymmetric insets: the img is scaled up
+ *  by 1/(1-l-r) x 1/(1-t-b) and shifted so the cropped sub-rect fills the box, clipped by
+ *  the wrapping div. This is a superset of the common one-axis "crop to fill" case (which
+ *  reduces to plain `object-fit:cover` positioning) so one formula covers both. */
+function croppedImgHtml(shape: ImpShape): string {
+  const { l, t, r, b } = shape.crop!;
+  const vw = 1 - l - r;
+  const vh = 1 - t - b;
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  const style = [
+    `position:absolute`,
+    `left:${round((-l / vw) * 100)}%`,
+    `top:${round((-t / vh) * 100)}%`,
+    `width:${round(100 / vw)}%`,
+    `height:${round(100 / vh)}%`,
+    `max-width:none`,
+    `max-height:none`,
+    `object-fit:fill`,
+  ].join(';');
+  return (
+    `<div style="position:relative;width:100%;height:100%;overflow:hidden">` +
+    `<img class="sl-img" src="assets/${shape.src}" alt="" style="${style}" loading="lazy" decoding="async"></div>`
+  );
+}
+
 function shapeContent(shape: ImpShape): string {
+  if (shape.kind === 'image' && shape.crop) return croppedImgHtml(shape);
   if (shape.kind === 'image' || (shape.kind === 'raster' && shape.src)) return `![](assets/${shape.src})`;
   if (shape.kind === 'table' && shape.table) return tableMd(shape);
   if (shape.kind === 'rect' || shape.kind === 'raster') return '<!--bg-->';

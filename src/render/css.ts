@@ -90,10 +90,10 @@ body{
 .sl-slide li{margin:.35em 0;}
 .sl-slide a{color:var(--color-link,var(--color-accent,#6cf));text-decoration:none;border-bottom:1px solid currentColor;}
 .sl-slide strong{color:inherit;font-weight:700;}
-.sl-slide code{font-family:var(--font-mono,ui-monospace,monospace);font-size:.9em;background:var(--code-inline-bg,rgba(127,127,127,.18));padding:.1em .35em;border-radius:4px;}
+.sl-slide code{font-family:var(--font-mono,ui-monospace,monospace);font-size:.9em;background:var(--code-inline-bg,rgba(127,127,127,.18));padding:.1em .35em;border-radius:var(--code-inline-radius,4px);}
 .sl-slide pre{font-family:var(--font-mono,ui-monospace,monospace);background:var(--code-bg,rgba(127,127,127,.12));color:var(--code-fg,inherit);padding:var(--code-pad,1.1em 1.3em);border-radius:var(--code-radius,12px);overflow:auto;font-size:.8em;line-height:1.55;box-shadow:var(--code-shadow,none);}
 .sl-slide pre code{background:none;padding:0;color:inherit;}
-.sl-slide blockquote{margin:0;padding-left:.8em;border-left:4px solid var(--color-accent,#6cf);font-style:italic;color:var(--color-muted,inherit);}
+.sl-slide blockquote{margin:0;padding-left:var(--quote-pad,.8em);border-left:var(--quote-rule,4px solid var(--color-accent,#6cf));font-style:var(--quote-style,italic);color:var(--color-muted,inherit);}
 .sl-slide blockquote p{font-size:1.15em;}
 .sl-img{max-width:100%;max-height:100%;object-fit:contain;display:block;}
 
@@ -101,7 +101,12 @@ body{
 .sl-slot-title{font-family:var(--font-display,inherit);font-weight:700;font-size:var(--size-h2,2.2em);line-height:1.08;letter-spacing:-0.01em;color:var(--color-heading,var(--color-text));}
 .sl-slot-subtitle{font-size:var(--size-h3,1.4em);color:var(--color-muted,var(--color-accent));font-weight:400;}
 .sl-slot-body{font-size:var(--size-body,var(--type-base));}
-.sl-slot-image,.sl-slot-media{display:grid;place-items:center;height:100%;position:relative;}
+/* Flex, not grid: a grid item's height:100% resolves against its grid area, and the
+   slot's own implicit row is content-sized — a cycle CSS resolves as auto, so the image
+   fell back to its intrinsic height and silently overflowed the cell. A flex container
+   with a definite height resolves the child's percentage height for real. */
+.sl-slot-image,.sl-slot-media{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:0;overflow:hidden;position:relative;}
+.sl-slot-image>*,.sl-slot-media>*{min-height:0;max-width:100%;}
 .sl-slot-media .sl-img{width:100%;height:100%;object-fit:cover;}
 .sl-slot-quote{font-size:var(--size-h3);font-style:italic;}
 .sl-slot-caption{font-size:var(--size-caption,.8em);color:var(--color-muted);}
@@ -127,7 +132,7 @@ body{
 .sl-slot-media .sl-video{width:100%;height:100%;object-fit:cover;}
 .sl-audio{width:100%;margin:.4em 0;}
 .sl-embed-wrap{position:relative;width:100%;height:100%;min-height:0;}
-.sl-embed,.sl-widget{width:100%;height:100%;min-height:240px;border:0;border-radius:10px;background:transparent;display:block;}
+.sl-embed,.sl-widget{width:100%;height:100%;min-height:240px;border:0;border-radius:var(--embed-radius,10px);background:transparent;display:block;}
 .sl-embed-fallback{display:none;align-items:center;justify-content:center;height:100%;min-height:240px;border:1px dashed var(--color-muted,#888);border-radius:10px;color:var(--color-muted,#888);font-family:var(--font-sans,system-ui);}
 @media print{.sl-embed,.sl-widget{display:none;} .sl-embed-fallback{display:flex;}}
 /* inline svg follows the region's text-align (left/center) */

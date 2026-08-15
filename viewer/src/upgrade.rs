@@ -38,7 +38,8 @@ fn dist_base() -> String {
 }
 
 /// `slaide-engine-<os>-<arch>[.exe].gz` for the running platform — matches release/package-dist.ts.
-fn engine_asset() -> Result<String> {
+/// Returns the asset filename plus the bare `<os>-<arch>` tag (for error messages).
+fn engine_asset() -> Result<(String, String)> {
     let os = match std::env::consts::OS {
         "windows" => "windows",
         "macos" => "macos",
@@ -51,7 +52,8 @@ fn engine_asset() -> Result<String> {
         other => bail!("unsupported architecture for Pro upgrade: {other}"),
     };
     let exe = if os == "windows" { ".exe" } else { "" };
-    Ok(format!("slaide-engine-{os}-{arch}{exe}.gz"))
+    let os_arch = format!("{os}-{arch}");
+    Ok((format!("slaide-engine-{os_arch}{exe}.gz"), os_arch))
 }
 
 /// Ask the engine its edition. True only if it explicitly reports `oss` (a Pro engine prints
@@ -82,11 +84,27 @@ pub fn ensure_pro_engine(engine: &Path, progress: &dyn Fn(&str)) -> Result<bool>
     }
     let _guard = UpgradeGuard;
 
-    let asset = engine_asset()?;
+    let (asset, os_arch) = engine_asset()?;
     let base = dist_base();
 
     progress("Downloading Pro engine…");
-    let gz = http_get(&format!("{base}/{asset}")).context("download Pro engine")?;
+    let asset_url = format!("{base}/{asset}");
+    let gz = match ureq::get(&asset_url).call() {
+        Ok(resp) => {
+            let mut buf = Vec::new();
+            resp.into_reader()
+                .read_to_end(&mut buf)
+                .with_context(|| format!("reading {asset_url}"))?;
+            buf
+        }
+        // A missing asset is an expected, nameable situation (this release hasn't published a
+        // Pro build for the running platform yet) — surface that instead of ureq's raw status
+        // text, which reads as an opaque network fault in the Sign-in-failed dialog.
+        Err(ureq::Error::Status(404, _)) => {
+            bail!("this Slaide release does not carry a Pro engine build for {os_arch} yet");
+        }
+        Err(e) => return Err(anyhow!("GET {asset_url}: {e}")).context("download Pro engine"),
+    };
     let sha = http_get(&format!("{base}/{asset}.sha256")).context("download checksum")?;
     verify_sha256(&gz, &sha).context("checksum verification")?;
 

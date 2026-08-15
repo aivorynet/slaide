@@ -82,7 +82,9 @@ Usage:
   slaide slots <deck.slaide>                    List the master's slot/colour/gradient/size vocabulary
   slaide compile <deck.slaide> [--inspect]     Print the compiled IR (JSON)
   slaide import <file.pptx|.key> [--out <dir>] [--fidelity hybrid|reconstruct|exact-raster] [--slaidec]
-                                                 Convert PowerPoint/Keynote → slaide (--slaidec: one bundled file)
+                                              [--placeholders]
+                                                 Convert PowerPoint/Keynote → slaide (--slaidec: one bundled file;
+                                                 --placeholders: keep empty picture boxes as drop zones — for a template)
   slaide compare <orig.pptx|refDir> <deck>      Measure fidelity vs the original (SSIM + overlays)
   slaide new <file.slaide> [--title <t>]       Scaffold a starter deck
   slaide pack <deck.slaide|folder> [-o <out>] [--quality <1-100>] [--max-width <px>]
@@ -346,7 +348,7 @@ async function main(): Promise<void> {
       const fidelity = flag('--fidelity') as 'reconstruct' | 'hybrid' | 'exact-raster' | undefined;
       const rt = flag('--raster-threshold');
       console.log(`${COLORS.dim}Importing ${basename(file)}…${COLORS.reset}`);
-      const r = await importDeck(file, out, { fidelity, rasterThreshold: rt ? Number(rt) / 100 : undefined, slaidec: has('--slaidec') });
+      const r = await importDeck(file, out, { fidelity, rasterThreshold: rt ? Number(rt) / 100 : undefined, slaidec: has('--slaidec'), placeholders: has('--placeholders') });
       report(r.warnings.map((w) => ({ code: 'import', message: w })));
       const target = r.slaidecPath ?? r.deckPath;
       const kind = r.slaidecPath ? ' (self-contained)' : '';
