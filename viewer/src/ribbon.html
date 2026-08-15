@@ -501,6 +501,15 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
           <button class="slv-btn slv-icon" data-ins="library" id="slv-ins-library" style="display:none" title="Image library — upload, add a folder, or pick a saved image"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,64H154.67L126.93,43.2a16.12,16.12,0,0,0-9.6-3.2H72A16,16,0,0,0,56,56V72H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H203.74A16.27,16.27,0,0,0,220,202.05L246.4,87a16,16,0,0,0-12.8-19.16A16.43,16.43,0,0,0,224,64ZM72,56h45.33l21.34,16H72ZM203.74,200H40V88H224Z"/></svg></button>
         </div>
       </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol">
+        <span class="slv-glabel">Blocks</span>
+        <div class="slv-grp">
+          <button class="slv-btn slv-icon" data-ins="chart" title="Insert a chart — edit its data in the panel"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,200h-8V40a8,8,0,0,0-8-8H152a8,8,0,0,0-8,8V80H96a8,8,0,0,0-8,8v40H48a8,8,0,0,0-8,8v64H32a8,8,0,0,0,0,16H224a8,8,0,0,0,0-16ZM160,48h40V200H160ZM104,96h40V200H104ZM56,144H88v56H56Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-ins="table" title="Insert a table — add rows and columns in the panel"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,48H32a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H224a8,8,0,0,0,8-8V56A8,8,0,0,0,224,48ZM40,112H88v32H40Zm64,0h48v32H104Zm112,32H168V112h48ZM216,64V96H40V64ZM40,160H88v32H40Zm64,32V160h48v32Zm112,0H168V160h48v32Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-ins="svg" title="Insert a graphic — paste SVG markup in the panel"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M200,24H72A16,16,0,0,0,56,40V56H40A16,16,0,0,0,24,72V200a16,16,0,0,0,16,16H168a16,16,0,0,0,16-16V184h16a16,16,0,0,0,16-16V40A16,16,0,0,0,200,24ZM168,200H40V72H168Zm32-32H184V72a16,16,0,0,0-16-16H72V40H200Z"/></svg></button>
+        </div>
+      </div>
     </div>
     <!-- Arrange: Align + Order -->
     <div class="slv-bandtab" data-tab="arrange">
@@ -1550,6 +1559,9 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
         if(k === 'text') s.__editor.insertText();
         else if(k === 'image'){ if(s.__editor.requestImage) s.__editor.requestImage(); }
         else if(k === 'library'){ try{ (WEB ? window : window.parent).postMessage({ type:'slaide:open-gallery' }, '*'); }catch(e){} }
+        else if(k === 'chart'){ if(s.__editor.insertChart) s.__editor.insertChart(); }
+        else if(k === 'table'){ if(s.__editor.insertTable) s.__editor.insertTable(3,3); }
+        else if(k === 'svg'){ if(s.__editor.insertSvg) s.__editor.insertSvg(); }
         else s.__editor.insertShape(k);
       });
     });

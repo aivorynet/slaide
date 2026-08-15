@@ -6,6 +6,26 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.9] - 2026-08-15
+
+### Added
+
+- **The editor can insert a chart, a table and a graphic.** The Insert tab gains a Blocks group.
+  A chart arrives ready to edit: pick bar, line, area, pie, donut or scatter, set a title and a
+  legend, and type the categories and values into a live grid. A table arrives as a grid you
+  click into, with row and column controls. A graphic takes any SVG markup you paste. Each one
+  round-trips as its data, so the deck source stays small and the chart redraws at whatever size
+  its box ends up.
+- **A picture frame can be filled.** Selecting an image or media slot now offers "Choose picture…"
+  and "Clear". Until now the panel could only change how a picture fitted its frame, never which
+  picture it was — so a template's image drop zones could not be used at all.
+
+### Changed
+
+- An editable render carries the ECharts engine even when the deck has no chart, so a chart
+  inserted into a chartless deck has something to draw with. It adds ~1.3MB to an editable render
+  only; view and export renders are unchanged, and mermaid (4.3MB) stays demand-driven.
+
 ## [1.2.8] - 2026-08-15
 
 ### Added
@@ -217,7 +237,8 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.8...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.9...HEAD
+[1.2.9]: https://github.com/aivorynet/slaide/compare/v1.2.8...v1.2.9
 [1.2.8]: https://github.com/aivorynet/slaide/compare/v1.2.7...v1.2.8
 [1.2.7]: https://github.com/aivorynet/slaide/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/aivorynet/slaide/compare/v1.2.5...v1.2.6

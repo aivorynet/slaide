@@ -2024,7 +2024,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slaide-view"
-version = "1.2.7"
+version = "1.2.8"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",

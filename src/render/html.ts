@@ -136,6 +136,10 @@ ${extraCss}
 
 export interface RenderOptions {
   mode?: 'web' | 'print';
+  /** An editable render carries the ECharts engine even when the deck has no chart yet — the
+   *  editor can insert one, and a chart inserted into a chartless deck has nothing to draw
+   *  with. Costs ~1.3MB, so it stays off for view/export renders. */
+  editable?: boolean;
 }
 
 const PRINT_CSS = (w: number, h: number) => `
@@ -153,9 +157,12 @@ html,body{background:#fff;overflow:visible;height:auto;}
 // (not parsed on load); the boot loader decodes + evals one the first time a chart of
 // that kind renders. The boot script must precede RUNTIME_JS so its slaide:change
 // listener is attached before the runtime fires its first navigation event.
-function chartBlock(renderedHtml: string): string {
+function chartBlock(renderedHtml: string, editable = false): string {
   const hasMermaid = renderedHtml.includes('sl-mermaid');
-  const hasEchart = renderedHtml.includes('sl-echart');
+  // An editable render also carries the ECharts engine even when the deck has no chart: the
+  // editor can insert one, and it would have nothing to draw with. Only ECharts — that is what
+  // Insert makes, and mermaid is 4.3MB against ECharts' 1.3MB, so it stays demand-driven.
+  const hasEchart = renderedHtml.includes('sl-echart') || editable;
   if (!hasMermaid && !hasEchart) return '';
   const libs =
     (hasMermaid ? `<script type="text/plain" id="sl-mermaid-lib">${MERMAID_LIB_B64}</script>\n` : '') +
@@ -207,7 +214,7 @@ ${counter}
   <kbd>n</kbd> notes &nbsp; <kbd>f</kbd> fullscreen &nbsp; <kbd>?</kbd> help
 </div></div>
 <script>window.__SLAIDE_NOTES__=${notes};</script>
-${chartBlock(slides)}<script>${RUNTIME_JS}</script>${extScriptTag}
+${chartBlock(slides, opts.editable)}<script>${RUNTIME_JS}</script>${extScriptTag}
 </body>
 </html>`;
 }
