@@ -322,8 +322,12 @@ export const RUNTIME_JS = String.raw`
     // moving the caret) — don't hijack them for slide navigation.
     if(isTyping()) return;
     switch(e.key){
-      case 'ArrowRight': case 'ArrowUp': case ' ': case 'PageDown': forward(); e.preventDefault(); break;
-      case 'ArrowLeft': case 'ArrowDown': case 'PageUp': backward(); e.preventDefault(); break;
+      // PowerPoint's mapping, which is what presenters' hands already know:
+      // Down/Right/Space/Enter/PageDown advance, Up/Left/Backspace/PageUp go back.
+      case 'ArrowRight': case 'ArrowDown': case ' ': case 'Enter': case 'PageDown':
+        forward(); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': case 'PageUp':
+        backward(); e.preventDefault(); break;
       case 'Home': goTo(0,1); break;
       case 'End': goTo(slides.length-1,1); break;
       case 'n': case 'N': toggleNotes(); break;

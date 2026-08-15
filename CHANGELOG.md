@@ -6,6 +6,14 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-08-15
+
+### Fixed
+
+- Arrow keys follow PowerPoint again: Down/Right/Space/Enter/PageDown advance, Up/Left/Backspace/
+  PageUp go back. A June change had swapped the vertical pair, so Up advanced and Down went back —
+  the opposite of what every presenter's hands expect.
+
 ## [1.2.5] - 2026-08-14
 
 ### Fixed
@@ -163,7 +171,14 @@ First public release.
 - `.slaidec` packing and unpacking, and the `compare` fidelity tool.
 - The bundled `aurora` theme.
 
-[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/aivorynet/slaide/compare/v1.2.6...HEAD
+[1.2.6]: https://github.com/aivorynet/slaide/compare/v1.2.5...v1.2.6
+[1.2.5]: https://github.com/aivorynet/slaide/compare/v1.2.4...v1.2.5
+[1.2.4]: https://github.com/aivorynet/slaide/compare/v1.2.3...v1.2.4
+[1.2.3]: https://github.com/aivorynet/slaide/compare/v1.2.2...v1.2.3
+[1.2.2]: https://github.com/aivorynet/slaide/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/aivorynet/slaide/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/aivorynet/slaide/compare/v1.0.5...v1.2.0
 [1.0.5]: https://github.com/aivorynet/slaide/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/aivorynet/slaide/releases/tag/v1.0.4
 [1.0.3]: https://github.com/aivorynet/slaide/releases/tag/v1.0.3
