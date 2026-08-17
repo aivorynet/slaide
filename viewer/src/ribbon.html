@@ -475,6 +475,22 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
           <button class="slv-btn slv-icon" data-act="delete" title="Delete (Del)"><svg viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"/></svg></button>
         </div>
       </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol" id="slv-fmt-grp">
+        <span class="slv-glabel">Format</span>
+        <div class="slv-grp" aria-label="Text formatting">
+          <select id="slv-fmt-font" class="slv-fmt-sel" title="Font family" style="width:110px;height:26px;font-size:11px;padding:0 4px;border:1px solid var(--slv-line);border-radius:4px;background:var(--slv-bg);color:var(--slv-ink);cursor:pointer;">
+            <option value="">(default)</option>
+          </select>
+          <input id="slv-fmt-size" type="number" min="8" max="200" step="1" value="16" title="Font size (px)" style="width:48px;height:26px;font-size:11px;padding:0 4px;border:1px solid var(--slv-line);border-radius:4px;background:var(--slv-bg);color:var(--slv-ink);text-align:center;">
+          <button class="slv-btn slv-icon slv-fmt-toggle" data-fmt="bold" title="Bold (Ctrl+B)" style="font-weight:700;font-size:13px;width:26px;">B</button>
+          <button class="slv-btn slv-icon slv-fmt-toggle" data-fmt="italic" title="Italic (Ctrl+I)" style="font-style:italic;font-size:13px;width:26px;">I</button>
+          <button class="slv-btn slv-icon slv-fmt-toggle" data-fmt="underline" title="Underline (Ctrl+U)" style="text-decoration:underline;font-size:13px;width:26px;">U</button>
+          <button class="slv-btn slv-icon" data-fmt="alignLeft" title="Align left"><svg viewBox="0 0 256 256" fill="currentColor" width="16" height="16"><path d="M32,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H40A8,8,0,0,1,32,64Zm8,48H168a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16Zm176,24H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm-48,40H40a8,8,0,0,0,0,16H168a8,8,0,0,0,0-16Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-fmt="alignCenter" title="Align center"><svg viewBox="0 0 256 256" fill="currentColor" width="16" height="16"><path d="M32,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H40A8,8,0,0,1,32,64Zm32,32a8,8,0,0,0,0,16H192a8,8,0,0,0,0-16Zm152,40H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm-24,40H64a8,8,0,0,0,0,16H192a8,8,0,0,0,0-16Z"/></svg></button>
+          <button class="slv-btn slv-icon" data-fmt="alignRight" title="Align right"><svg viewBox="0 0 256 256" fill="currentColor" width="16" height="16"><path d="M32,64a8,8,0,0,1,8-8H216a8,8,0,0,1,0,16H40A8,8,0,0,1,32,64Zm56,32a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm128,40H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Zm0,40H88a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"/></svg></button>
+        </div>
+      </div>
     </div>
     <!-- Insert: Text + Shapes + Media -->
     <div class="slv-bandtab" data-tab="insert" id="slv-insert-grp" aria-label="Insert element">
@@ -1592,6 +1608,36 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
         else if(a === 'delete') ed.deleteSelected();
       });
     });
+    // Format group: font, size, B/I/U, alignment.
+    (function initFmt(){
+      var fontSel = q('#slv-fmt-font'), sizeSel = q('#slv-fmt-size');
+      // Populate font dropdown from theme tokens once the editor is ready.
+      (function fillFonts(){ var s = S(), ed = s && s.__editor;
+        if(!ed || !ed.getFontOptions){ setTimeout(fillFonts, 50); return; }
+        var opts = ed.getFontOptions(); fontSel.innerHTML = ''; var groups = {};
+        opts.forEach(function(o){
+          var op = document.createElement('option'); op.value = o.value; op.textContent = o.label;
+          if(!o.group){ fontSel.appendChild(op); return; }
+          var g = groups[o.group];
+          if(!g){ g = document.createElement('optgroup'); g.label = o.group; groups[o.group] = g; fontSel.appendChild(g); }
+          g.appendChild(op);
+        });
+      })();
+      fontSel.addEventListener('change', function(){ var s = S(), ed = s && s.__editor; if(ed) ed.setElementFont(fontSel.value); });
+      sizeSel.addEventListener('change', function(){ var s = S(), ed = s && s.__editor; if(ed) ed.setElementFontSize(sizeSel.value); });
+      Array.prototype.forEach.call(q('#slv-band').querySelectorAll('[data-fmt]'), function(b){
+        b.addEventListener('click', function(){
+          var s = S(), ed = s && s.__editor; if(!ed) return;
+          var f = b.getAttribute('data-fmt');
+          if(f === 'bold') ed.toggleBold();
+          else if(f === 'italic') ed.toggleItalic();
+          else if(f === 'underline') ed.toggleUnderline();
+          else if(f === 'alignLeft') ed.setElementAlign('left');
+          else if(f === 'alignCenter') ed.setElementAlign('center');
+          else if(f === 'alignRight') ed.setElementAlign('right');
+        });
+      });
+    })();
     // Editing is the default mode in the editor build: enter it once the deck is ready.
     // (Esc is left to the editor for deselect; toggle edit off with the Edit button.)
     (function enterEdit(){ var s = S(); if(s && s.edit){ if(!editing()) setEdit(true); } else setTimeout(enterEdit, 30); })();

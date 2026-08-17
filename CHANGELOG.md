@@ -6,6 +6,30 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.10] - 2026-08-17
+
+### Fixed
+
+- **PowerPoint export keeps the stacking order.** The exporter used to write all shapes first,
+  then all images, then all text, whatever order the slide painted them in — so a badge authored
+  on top of a photo could end up hidden behind it. Every element now carries its position in the
+  slide's paint order and is written in that order, which is exactly how PowerPoint stacks
+  shapes. Verified against real PowerPoint renders of overlap-heavy slides.
+- Inspector inputs no longer show the browser's blue focus outline; focus is marked with the
+  panel's own accent border.
+- A font picked from the new non-theme tiers reads back correctly when the element is selected
+  again, instead of falling back to "(default)".
+
+### Added
+
+- **A Format group on the Home tab.** Font family, size, bold, italic, underline and alignment
+  now sit in the ribbon, next to Element — the basics no longer require the properties panel.
+- **Three font tiers, in the ribbon and the properties panel alike.** The font list offers the
+  deck's theme fonts, nine web-safe families, and fifteen popular Google Fonts. A Google font
+  loads its stylesheet on demand, once per family, only when picked.
+- The engine's `/v1/shoot` accepts a `slides` array and renders a montage of just those slides,
+  so a caller reviewing two edited slides no longer pays for the whole deck.
+
 ## [1.2.9] - 2026-08-15
 
 ### Added

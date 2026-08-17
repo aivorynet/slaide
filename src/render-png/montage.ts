@@ -14,6 +14,7 @@ export interface MontageOptions {
   cols?: number; // columns (default 3)
   tileWidth?: number; // px per slide tile (default 360 — compact, token-cheap)
   quality?: number; // JPEG quality 1-100 (default 80)
+  only?: number[]; // 0-based slide indices to include; omit → all slides
   /** A pooled Chromium browser to reuse; when omitted a throwaway one is launched + closed. */
   browser?: import('playwright').Browser;
 }
@@ -60,8 +61,10 @@ export async function montageDeck(
     await page.waitForTimeout(400);
 
     // Capture each slide (builds settled) as a light JPEG, then tile + encode in one canvas.
+    const indices = opts.only ?? ir.slides.map((_, i) => i);
     const shots: string[] = [];
-    for (let i = 0; i < ir.slides.length; i++) {
+    for (const i of indices) {
+      if (i < 0 || i >= ir.slides.length) continue;
       await page.evaluate((n) => (window as any).slaide.show(n), i);
       await page.waitForTimeout(150);
       shots.push((await page.screenshot({ type: 'jpeg', quality: 90 })).toString('base64'));

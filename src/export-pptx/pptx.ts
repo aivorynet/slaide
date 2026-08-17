@@ -63,18 +63,20 @@ interface TextBox {
   textW?: number;
   runs: Run[];
 }
+interface RegionItem {
+  _k: 'shape' | 'img' | 'shot' | 'text';
+  _o: number;
+  x: number; y: number; w: number; h: number;
+  // shape fields
+  fill?: string; fillAlpha?: number; grad?: string;
+  borderColor?: string; borderAlpha?: number; borderWidth?: number; radius?: number;
+  // img fields
+  src?: string; fit?: string; cap?: string; data?: string; shot?: boolean; fx?: boolean;
+  // text fields
+  align?: string; lineSpacing?: number; oneLine?: boolean; textW?: number; runs?: Run[];
+}
 interface RegionBox {
-  shapes: ShapeBox[];
-  textBoxes: TextBox[];
-  // `fit` = computed object-fit (drives pptxgenjs sizing). `cap` is a temp DOM marker so Node
-  // can element-screenshot the rendered <img> when fetching its src fails; `data` is the
-  // resolved data-URI payload; `shot` marks a screenshot fallback (already cropped — no sizing).
-  // `fx` = the rendered pixels differ from the source bytes (a CSS filter/opacity/blend, or an
-  // SVG whose colours come from the page) — screenshot it instead of shipping the raw src.
-  imgs?: { x: number; y: number; w: number; h: number; src: string; fit?: string; cap?: string; data?: string; shot?: boolean; fx?: boolean }[];
-  // Charts / inline SVG, captured as transparent PNGs (their internal <text> must not be
-  // walked into text runs). `cap` is a temp DOM marker used to element-screenshot in Node.
-  shots?: { x: number; y: number; w: number; h: number; cap: string; data?: string }[];
+  items: RegionItem[];
 }
 interface SlideData {
   // 'raster': anything but a flat opaque colour (image, gradient, translucent wash, or several
@@ -165,6 +167,7 @@ const EXTRACT = String.raw`
     var sRect = slideEl.getBoundingClientRect();
     function box(el){ var r = el.getBoundingClientRect(); return { x: r.left - sRect.left, y: r.top - sRect.top, w: r.width, h: r.height }; }
     var capId = 0; // per-slide marker id; selectors are scoped to .sl-active so reuse is safe
+    var _curDomIdx = null; // set per-region for DOM-order z-fidelity
 
     // Background: a flat opaque colour maps to a native PPTX background colour; ANYTHING else
     // (image, gradient, translucent wash over the slide colour) is rasterised in Node from the
@@ -269,8 +272,10 @@ const EXTRACT = String.raw`
       var padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0) +
                  (parseFloat(cs.borderTopWidth)||0) + (parseFloat(cs.borderBottomWidth)||0);
       var oneLine = lhPx>0 && (b.h - padY) < lhPx*1.6;
-      return { x:b.x, y:b.y, w:b.w, h:b.h, align: cs.textAlign, lineSpacing: ls,
+      var unit = { x:b.x, y:b.y, w:b.w, h:b.h, align: cs.textAlign, lineSpacing: ls,
         oneLine: oneLine || undefined, textW: lineWidth(el), runs: runs };
+      if(_curDomIdx) unit._o = _curDomIdx.get(el) || 0;
+      return unit;
     }
     function hasBlockChild(el){
       for(var i=0;i<el.children.length;i++){
@@ -313,7 +318,13 @@ const EXTRACT = String.raw`
     function regionData(region){
       var rcs = getComputedStyle(region);
       var rbox = box(region);
-      var shapes = [];
+      // DOM-order map: every descendant gets an index so shapes/images/text interleave correctly
+      // in PPTX (later-added shape = on top). Without this, type-bucketing hard-codes
+      // shape < image < svg < text regardless of actual paint order.
+      var allDesc = region.querySelectorAll('*');
+      _curDomIdx = new Map();
+      for(var di=0;di<allDesc.length;di++) _curDomIdx.set(allDesc[di], di);
+      var items = [];
       // a region with background-clip:text paints a gradient onto its TEXT, not a box.
       var clipText = (rcs.webkitBackgroundClip==='text' || rcs.backgroundClip==='text');
       var isGrad = !clipText && rcs.backgroundImage && rcs.backgroundImage.indexOf('gradient')>=0;
@@ -330,7 +341,7 @@ const EXTRACT = String.raw`
       var borderAlpha = borderColor ? alphaOf(rcs.borderTopColor) : 1;
       var radius = parseFloat(rcs.borderTopLeftRadius) || 0;
       if(fill || borderColor){
-        shapes.push({ x:rbox.x, y:rbox.y, w:rbox.w, h:rbox.h,
+        items.push({ _k:'shape', _o:-1, x:rbox.x, y:rbox.y, w:rbox.w, h:rbox.h,
           fill: fill || undefined, fillAlpha: fillAlpha,
           grad: isGrad ? rcs.backgroundImage : undefined,
           borderColor: borderColor || undefined, borderAlpha: borderAlpha,
@@ -348,7 +359,7 @@ const EXTRACT = String.raw`
         var sbc = sbw>0 ? rgbToHex(scs.borderTopColor) : null;
         if(!sfill && !sbc) return;
         var sb = box(sh);
-        shapes.push({ x:sb.x, y:sb.y, w:sb.w, h:sb.h,
+        items.push({ _k:'shape', _o: _curDomIdx.get(sh) || 0, x:sb.x, y:sb.y, w:sb.w, h:sb.h,
           fill: sfill || undefined, fillAlpha: sfill ? alphaOf(scs.backgroundColor) : 1,
           grad: sIsGrad ? scs.backgroundImage : undefined,
           borderColor: sbc || undefined, borderAlpha: sbc ? alphaOf(scs.borderTopColor) : 1,
@@ -357,40 +368,36 @@ const EXTRACT = String.raw`
       // images (image slots + any placed images) — record object-fit (drives pptxgenjs sizing)
       // and tag each with a data-sl-cap marker so Node can element-screenshot the rendered <img>
       // (while its slide is active) if fetching the src fails or CSS repaints it.
-      var imgs = [];
       region.querySelectorAll('img').forEach(function(im){
         if(im.closest(SHOT_SEL)) return;
         var ib = box(im);
         if(ib.w>1 && ib.h>1 && im.src){
           var icap = String(capId++);
           im.setAttribute('data-sl-cap', icap);
-          imgs.push({ x:ib.x, y:ib.y, w:ib.w, h:ib.h, src: im.src,
+          items.push({ _k:'img', _o: _curDomIdx.get(im) || 0, x:ib.x, y:ib.y, w:ib.w, h:ib.h, src: im.src,
             fit: getComputedStyle(im).objectFit || undefined, cap: icap,
-            // An SVG src is screenshotted too: pptxgenjs writes it as a picture whose raster
-            // fallback part it cannot generate outside a browser.
             fx: (repainted(im, slideEl) || /^data:image\/svg|\.svg(\?|$)/i.test(im.src)) || undefined });
         }
       });
       // charts (mermaid/echarts) + inline svg → tag each for an element screenshot in Node
-      var shots = [];
       region.querySelectorAll(SHOT_SEL).forEach(function(cel){
         if(cel.parentElement && cel.parentElement.closest(SHOT_SEL)) return; // skip nested
         var cb = box(cel);
         if(cb.w<2 || cb.h<2) return;
         var cap = String(capId++);
         cel.setAttribute('data-sl-cap', cap);
-        shots.push({ x:cb.x, y:cb.y, w:cb.w, h:cb.h, cap:cap });
+        items.push({ _k:'shot', _o: _curDomIdx.get(cel) || 0, x:cb.x, y:cb.y, w:cb.w, h:cb.h, cap:cap });
       });
       // text, measured at block granularity
       var textBoxes = [];
       collectUnits(region, null, textBoxes);
+      for(var ti=0;ti<textBoxes.length;ti++){ textBoxes[ti]._k='text'; }
+      items = items.concat(textBoxes);
       curRegionFill = null;
-      if(!(shapes.length || textBoxes.length || imgs.length || shots.length)) return null;
-      return {
-        shapes: shapes, textBoxes: textBoxes,
-        imgs: imgs.length ? imgs : undefined,
-        shots: shots.length ? shots : undefined
-      };
+      _curDomIdx = null;
+      items.sort(function(a,b){ return a._o - b._o; });
+      if(!items.length) return null;
+      return { items: items };
     }
 
     var regions = [];
@@ -553,7 +560,7 @@ export async function exportPptx(
       // strip those first, otherwise every shot ships a baked-in slice of the old background.
       await addStyle(page, 'sl-pptx-shot', SHOT_CSS);
       for (const region of data.regions) {
-        for (const shot of region.shots ?? []) {
+        for (const shot of region.items.filter((i: any) => i._k === 'shot')) {
           const handle = await page.$(`.sl-slide.sl-active [data-sl-cap="${shot.cap}"]`);
           if (!handle) continue;
           const png = await handle.screenshot({ omitBackground: true });
@@ -564,11 +571,11 @@ export async function exportPptx(
       // http(s) srcs are fetched (module-level cache), and an image the page repaints (`fx`)
       // or a failed fetch falls back to an element screenshot of the rendered <img>.
       for (const region of data.regions) {
-        for (const im of region.imgs ?? []) {
+        for (const im of region.items.filter((i) => i._k === 'img')) {
           if (!im.fx) {
-            if (im.src.startsWith('data:')) continue;
-            if (/^https?:/i.test(im.src)) {
-              const fetched = await fetchImageData(im.src);
+            if (im.src!.startsWith('data:')) continue;
+            if (/^https?:/i.test(im.src!)) {
+              const fetched = await fetchImageData(im.src!);
               if (fetched) { im.data = fetched.data; continue; }
             }
           }
@@ -635,84 +642,66 @@ export async function exportPptx(
     if (data.bg?.type === 'color') slide.background = { color: data.bg.color };
     else if (data.bg?.type === 'raster' && data.bg.data) slide.background = { path: 'bg.jpg', data: stripData(data.bg.data) };
 
-    // Regions are walked in DOM order = paint order, so shapes/images/text stack correctly.
+    // Items are walked in DOM order (sorted by _o in regionData) so shapes/images/text stack
+    // correctly — later items render on top, matching the browser's paint order.
     const transp = (a?: number) => (a !== undefined && a < 1 ? Math.round((1 - a) * 100) : undefined);
     for (const r of data.regions) {
-      // 1. box fills / borders (region cards, pills, colour panels, free-layer boxes). A CSS
-      //    gradient becomes a real <a:gradFill> in post-process — pptxgenjs can only write the
-      //    solid first stop, which paints a card's whole face in its accent-rail colour.
-      for (const s of r.shapes) {
-        const shapeOpts: any = {
-          x: inch(s.x), y: inch(s.y), w: inch(s.w), h: inch(s.h),
-          fill: s.fill ? { color: s.fill, transparency: transp(s.fillAlpha) } : { type: 'none' },
-        };
-        if (s.borderColor) shapeOpts.line = { color: s.borderColor, transparency: transp(s.borderAlpha), width: Math.max(0.5, (s.borderWidth ?? 1) * 0.75) };
-        if (s.radius) shapeOpts.rectRadius = inch(Math.min(s.radius, s.w / 2, s.h / 2));
-        const grad = s.grad ? gradFillXml(s.grad, s.w, s.h) : null;
-        if (grad) {
-          // objectName lands in <p:cNvPr name>, which is how injectAnim finds this shape again.
-          shapeOpts.objectName = `slgrad${Object.keys(fills).length}`;
-          fills[shapeOpts.objectName] = grad;
+      for (const item of r.items) {
+        if (item._k === 'shape') {
+          const s = item;
+          const shapeOpts: any = {
+            x: inch(s.x), y: inch(s.y), w: inch(s.w), h: inch(s.h),
+            fill: s.fill ? { color: s.fill, transparency: transp(s.fillAlpha) } : { type: 'none' },
+          };
+          if (s.borderColor) shapeOpts.line = { color: s.borderColor, transparency: transp(s.borderAlpha), width: Math.max(0.5, (s.borderWidth ?? 1) * 0.75) };
+          if (s.radius) shapeOpts.rectRadius = inch(Math.min(s.radius, s.w / 2, s.h / 2));
+          const grad = s.grad ? gradFillXml(s.grad, s.w, s.h) : null;
+          if (grad) {
+            shapeOpts.objectName = `slgrad${Object.keys(fills).length}`;
+            fills[shapeOpts.objectName] = grad;
+          }
+          slide.addShape(s.radius ? ('roundRect' as any) : ('rect' as any), shapeOpts);
+        } else if (item._k === 'img') {
+          const im = item;
+          const payload = im.data ?? (im.src?.startsWith('data:') ? im.src : null);
+          if (!payload) continue;
+          const imgOpts: any = { data: stripData(payload), x: inch(im.x), y: inch(im.y), w: inch(im.w), h: inch(im.h) };
+          if (!im.shot) {
+            if (im.fit === 'cover') imgOpts.sizing = { type: 'cover', w: inch(im.w), h: inch(im.h) };
+            else if (im.fit === 'contain') imgOpts.sizing = { type: 'contain', w: inch(im.w), h: inch(im.h) };
+          }
+          slide.addImage(imgOpts);
+        } else if (item._k === 'shot') {
+          if (item.data) slide.addImage({ data: stripData(item.data), x: inch(item.x), y: inch(item.y), w: inch(item.w), h: inch(item.h) });
+        } else if (item._k === 'text') {
+          const tb = item;
+          const runs = tb.runs!.map((run: any) => ({
+            text: run.text,
+            options: {
+              bold: run.bold,
+              italic: run.italic,
+              underline: run.underline ? { style: 'sng' as const } : undefined,
+              color: run.color,
+              fontSize: run.sizePt,
+              charSpacing: run.spacePt,
+              fontFace: run.font,
+              breakLine: run.breakLine,
+              bullet: run.bullet ? true : undefined,
+            },
+          }));
+          const slack = tb.oneLine ? 0 : Math.max(tb.w, tb.textW ?? 0) * 1.02 - tb.w;
+          const al = mapAlign(tb.align || 'left');
+          const lead = al === 'right' ? slack : al === 'center' ? slack / 2 : 0;
+          slide.addText(runs as any, {
+            x: inch(tb.x - lead), y: inch(tb.y), w: inch(tb.w + slack), h: inch(tb.h),
+            align: al,
+            valign: 'middle',
+            margin: 0,
+            autoFit: false,
+            wrap: !tb.oneLine,
+            lineSpacingMultiple: tb.lineSpacing && tb.lineSpacing > 0.5 && tb.lineSpacing < 3 ? tb.lineSpacing : undefined,
+          });
         }
-        slide.addShape(s.radius ? ('roundRect' as any) : ('rect' as any), shapeOpts);
-      }
-
-      // 2. images (image slots + placed images) — `data` is the fetched/screenshotted payload,
-      //    data: srcs pass straight through. object-fit maps to pptxgenjs sizing so a cover-
-      //    cropped photo exports cropped instead of squashed; screenshot fallbacks are already
-      //    cropped to their rendered box, so they get no sizing.
-      for (const im of r.imgs ?? []) {
-        const payload = im.data ?? (im.src.startsWith('data:') ? im.src : null);
-        if (!payload) continue;
-        const imgOpts: any = { data: stripData(payload), x: inch(im.x), y: inch(im.y), w: inch(im.w), h: inch(im.h) };
-        if (!im.shot) {
-          if (im.fit === 'cover') imgOpts.sizing = { type: 'cover', w: inch(im.w), h: inch(im.h) };
-          else if (im.fit === 'contain') imgOpts.sizing = { type: 'contain', w: inch(im.w), h: inch(im.h) };
-        }
-        slide.addImage(imgOpts);
-      }
-
-      // 2b. charts / inline svg captured as transparent PNGs
-      for (const s of r.shots ?? []) {
-        if (s.data) slide.addImage({ data: stripData(s.data), x: inch(s.x), y: inch(s.y), w: inch(s.w), h: inch(s.h) });
-      }
-
-      // 3. text — one box per measured block, at its real position (preserves padding, gaps,
-      //    per-block alignment). valign:'middle' anchors each block on its stable centre so a
-      //    PowerPoint line box slightly taller than the HTML one grows symmetrically, not down.
-      for (const tb of r.textBoxes) {
-        const runs = tb.runs.map((run) => ({
-          text: run.text,
-          options: {
-            bold: run.bold,
-            italic: run.italic,
-            underline: run.underline ? { style: 'sng' as const } : undefined,
-            color: run.color,
-            fontSize: run.sizePt,
-            charSpacing: run.spacePt,
-            fontFace: run.font,
-            breakLine: run.breakLine,
-            bullet: run.bullet ? true : undefined,
-          },
-        }));
-        // A wrapping box needs slightly more room in PowerPoint than in the browser: PowerPoint
-        // sets the same font marginally wider, and where CSS lets an over-long word overflow its
-        // box (textW > w) PowerPoint breaks the word instead. Widen to the line the browser
-        // actually drew, on the side(s) that don't move the block's anchor.
-        const slack = tb.oneLine ? 0 : Math.max(tb.w, tb.textW ?? 0) * 1.02 - tb.w;
-        const al = mapAlign(tb.align);
-        const lead = al === 'right' ? slack : al === 'center' ? slack / 2 : 0;
-        slide.addText(runs as any, {
-          x: inch(tb.x - lead), y: inch(tb.y), w: inch(tb.w + slack), h: inch(tb.h),
-          align: al,
-          valign: 'middle',
-          margin: 0,
-          autoFit: false,
-          // A block the browser keeps on one line must stay on one line: PowerPoint's slightly
-          // wider text metrics would otherwise break it and push it out of its box.
-          wrap: !tb.oneLine,
-          lineSpacingMultiple: tb.lineSpacing && tb.lineSpacing > 0.5 && tb.lineSpacing < 3 ? tb.lineSpacing : undefined,
-        });
       }
     }
   }
@@ -724,7 +713,7 @@ export async function exportPptx(
     transition: opts.transitions === false ? undefined : { name: d.transition, durationMs: d.transitionMs ?? ir.transitions.duration },
     // One build spec per text box, in add order (= document order of text-bearing <p:sp>),
     // so inject-anim's textSpids() line up 1:1.
-    builds: opts.builds === false ? undefined : d.regions.flatMap((r) => r.textBoxes.map((tb) => ({ pBuilds: paragraphBuilds(tb.runs) }))),
+    builds: opts.builds === false ? undefined : d.regions.flatMap((r) => r.items.filter((i: any) => i._k === 'text').map((tb: any) => ({ pBuilds: paragraphBuilds(tb.runs) }))),
     fills: slideFills[i],
   }));
   buf = await injectAnim(buf, anims, { safe: false });
