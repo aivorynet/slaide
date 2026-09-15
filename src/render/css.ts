@@ -11,7 +11,13 @@ export function tokenCss(ir: DeckIR): string {
 
 const STATIC_CSS = `
 *,*::before,*::after{box-sizing:border-box;}
-html,body{margin:0;height:100%;}
+/* iOS/Android text autosizing ("font boosting") inflates text inside a block whose layout
+   width differs from the visual viewport — exactly our case: a 720px stage scaled to the
+   phone. Every font-size grew by a factor that depends on the viewport, so headlines
+   collided with body copy, the amount differed between portrait and landscape, and the
+   layout only settled after a rotation forced a reflow. The deck is scaled as a whole; the
+   browser must never resize its type on its own. */
+html,body{margin:0;height:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 body{
   background:var(--sl-stage-bg,#0a0a0e);
   font-family:var(--font-sans, system-ui, sans-serif);
@@ -20,7 +26,29 @@ body{
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
-.sl-viewport{position:fixed;inset:0;overflow:hidden;background:var(--sl-stage-bg,#0a0a0e);}
+/* iOS: position:fixed;inset:0 sizes to the LARGE viewport (browser bar hidden) while the
+   VISUAL viewport (bar showing) is what the user sees. The two disagreed by the height of
+   Safari's chrome, so the slide sat too high and part of it hid under the bar, differently
+   in portrait and landscape. 100dvh tracks the dynamic viewport instead.
+
+   A CLAMP, not a size. Hosts that dock the deck (the web editor's grid cell, the native chat
+   layout) override this rule to position:absolute inside a bounded cell, and an absolute box
+   with left+right+width all non-auto is over-constrained — CSS 2.1 §10.3.7 drops 'right', and
+   'bottom' for the height pair. A plain 'width:100dvw' here therefore blew the viewport back
+   out to WINDOW size, anchored at the cell's top-left and clipped by the cell: the deck fitted
+   and centred against the whole window, sat right of centre and was cut off at the bottom
+   (2026-09-03). max-* is inert whenever the box is already smaller than the viewport, so the
+   docked case is untouched while the fixed full-window case still gets the dvh behaviour. No
+   100vh fallback is needed: a browser without dvh drops the declaration and the box falls back
+   to its inset-derived size, which is exactly the pre-dvh behaviour.
+
+   This element is also the box runtime.ts's scale() fits and centres against — it is .sl-stage's
+   containing block, so it is the only box whose size cannot disagree with where the stage is
+   painted. CSS grid centring was tried here and does not work: place-items:center start-aligns an
+   item LARGER than its area (the unscaled 1280x720 canvas always is), and the 'unsafe' overflow
+   keyword is parsed but ignored. So the centring stays in the transform — over a box that is now
+   measured, not inferred from the window. */
+.sl-viewport{position:fixed;inset:0;max-height:100dvh;max-width:100dvw;overflow:hidden;background:var(--sl-stage-bg,#0a0a0e);}
 
 /* thin, unobtrusive scrollbars wherever the deck scrolls (notes, code, help) */
 *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent;}
@@ -44,6 +72,10 @@ body{
    editor's edit CSS re-enables selection on editable regions while editing. */
 .sl-stage, .sl-stage *{
   -webkit-user-select:none; user-select:none;
+  /* Belt and braces with the html/body rule above: iOS applies text autosizing per BLOCK, so a
+     descendant can still be boosted even when the root opts out. Every element inside the
+     scaled stage keeps the size the layout computed. */
+  -webkit-text-size-adjust:100%; text-size-adjust:100%;
 }
 
 /* ---- slide + layers ---- */
@@ -99,6 +131,14 @@ body{
 
 /* slot types */
 .sl-slot-title{font-family:var(--font-display,inherit);font-weight:700;font-size:var(--size-h2,2.2em);line-height:1.08;letter-spacing:-0.01em;color:var(--color-heading,var(--color-text));}
+/* A title slot's text is emitted as a real <h1> (render/html.ts regionHtml). It must keep the
+   SLOT's metrics: the rule above and the master's slot style already decide size/weight/leading/
+   colour, and the generic h1 rule would override every one of them (a <p> only ever inherited
+   them). Only the FACE comes from a rule, so a heading keeps the display font even when the
+   slot's own font-family is gone — --slot-font carries a master's explicit "font:" choice, so
+   a theme that asked for a different face still wins. Margin matches the <p> it replaces. */
+.sl-slide .sl-slot-h{font-family:var(--slot-font,var(--font-display,var(--font-sans)));
+  font-size:inherit;font-weight:inherit;font-style:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0 0 .6em;}
 .sl-slot-subtitle{font-size:var(--size-h3,1.4em);color:var(--color-muted,var(--color-accent));font-weight:400;}
 .sl-slot-body{font-size:var(--size-body,var(--type-base));}
 /* Flex, not grid: a grid item's height:100% resolves against its grid area, and the
@@ -151,14 +191,14 @@ body{
 /* ---- chrome: header / footer / logo (overlay layer) ---- */
 .sl-layer-chrome{position:absolute;inset:0;z-index:3;pointer-events:none;}
 .sl-header,.sl-footer{position:absolute;left:0;right:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
-  padding:0 var(--chrome-pad,6%);font-family:var(--font-sans,system-ui);font-size:var(--chrome-size,15px);color:var(--color-muted,#888);}
+  padding:0 var(--chrome-pad,6%);font-family:var(--font-sans,system-ui);font-size:var(--chrome-size,15px);color:var(--chrome-color,var(--color-muted,#888));}
 .sl-header{top:var(--chrome-top,4.4%);}
-.sl-footer{bottom:var(--chrome-bottom,5%);font-size:var(--chrome-foot-size,17px);color:var(--color-text,#eee);}
+.sl-footer{bottom:var(--chrome-bottom,5%);font-size:var(--chrome-foot-size,17px);color:var(--chrome-foot-color,var(--color-text,#eee));}
 .sl-footer .sl-band-c,.sl-footer .sl-band-r{font-size:var(--chrome-page-size,inherit);}
 .sl-band-l{justify-self:start;text-align:left;}
 .sl-band-c{justify-self:center;text-align:center;}
 .sl-band-r{justify-self:end;text-align:right;}
-.sl-footer .sl-band-r{color:var(--color-muted);}
+.sl-footer .sl-band-r{color:var(--chrome-foot-color,var(--color-muted));}
 .sl-header p,.sl-footer p{margin:0;display:inline;}
 .sl-logo{position:absolute;color:var(--color-text,#fff);}
 .sl-logo svg,.sl-logo img{height:var(--logo-h,30px);width:auto;display:block;}

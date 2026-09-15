@@ -30,9 +30,43 @@ function backgroundCss(bg: BackgroundDef | null): string {
   return '';
 }
 
-function styleAttr(style: Record<string, string>): string {
-  const s = serializeStyle(style);
-  return s ? `;${s}` : '';
+/** A region's `style` attribute. `grid-area:<name>` places the region IN the content grid —
+ *  but an ANCHORED slot (`anchor:` in the master → `position:absolute`, see compiler/compile.ts
+ *  `mapSlotStyle`) is out of flow and its percentages are documented as "% of the canvas".
+ *
+ *  CSS Grid §9.2: an absolutely-positioned child of a grid container that IS its containing
+ *  block takes its containing block from the grid-placement properties — the grid AREA, not the
+ *  container's padding box. `.sl-layer-content` is `position:absolute;inset:0`, so with no
+ *  `grid-area` the containing block is exactly the canvas (what the anchor and the editor's
+ *  `geomOf()` both measure against); WITH one it becomes a single cell, and the same anchor
+ *  resolved ~2.3x off in both position and size — enough to push a placed photo past the slide
+ *  edge (then clipped by `.sl-slide{overflow:hidden}`) on any grid whose tracks overflow the
+ *  padded box. An out-of-flow region occupies no cell either way, so simply never place it. */
+function regionStyle(name: string, style: Record<string, string>): string {
+  const decls = serializeStyle(style);
+  const placed = style.position === 'absolute' ? '' : `grid-area:${name}`;
+  return placed && decls ? `${placed};${decls}` : placed || decls;
+}
+
+/** A region that rendered as exactly ONE plain paragraph — the shape a slot gets when its source
+ *  is bare text (`:: title ::` + `Ansprechpartner`), which is how nearly every deck writes a
+ *  title. Anything else (an authored `## heading`, a list, an image, a build block, two
+ *  paragraphs) does not match and is passed through untouched. */
+const BARE_PARAGRAPH = /^<p>([\s\S]*)<\/p>$/;
+
+/** A title slot IS the slide's heading, so emit a real `<h1>` instead of a `<p>`: heading
+ *  semantics for screen readers and the .pptx/PDF exporters, and — the visible bug — the
+ *  display-face rule in css.ts (`.sl-slide h1…{font-family:var(--font-display,…)}`) can finally
+ *  reach it, so a chapter title keeps the theme's display face even when the slot's own
+ *  `font-family` is lost or overridden. `.sl-slot-h` keeps the SLOT's metrics (size/weight/
+ *  leading/colour/margin), so nothing moves; a master's explicit `font:` still wins through
+ *  `--slot-font` (see compiler/compile.ts). The editor's `collectEdits()` unwraps it back to
+ *  plain text, so the deck source stays markdown and round-trips to this same element. */
+function regionHtml(r: { slotType: string; html: string }): string {
+  if (r.slotType !== 'title') return r.html;
+  const m = r.html.trim().match(BARE_PARAGRAPH);
+  if (!m || m[1].includes('<p')) return r.html;
+  return `<h1 class="sl-slot-h">${m[1]}</h1>`;
 }
 
 function renderLayers(slide: SlideIR, shown: boolean): string {
@@ -51,7 +85,11 @@ function renderLayers(slide: SlideIR, shown: boolean): string {
     .filter((r) => r.name !== 'free')
     .map(
       (r) =>
-        `<div class="sl-region sl-slot-${r.slotType}" data-region="${esc(r.name)}" data-source-region="${esc(r.source)}" style="grid-area:${r.name}${styleAttr(r.style)}">${r.html}</div>`,
+        // data-source-nth only when it is not the first region of its name: a well-formed deck
+        // never carries the attribute, so this changes no existing markup. The editor needs it to
+        // address the SECOND `:: name ::` on a slide — by name alone a patch always lands on the
+        // first one (see RegionIR.sourceNth and patch.ts regionRange).
+        `<div class="sl-region sl-slot-${r.slotType}" data-region="${esc(r.name)}" data-source-region="${esc(r.source)}"${r.sourceNth ? ` data-source-nth="${r.sourceNth}"` : ''} style="${regionStyle(r.name, r.style)}">${regionHtml(r)}</div>`,
     )
     .join('\n');
   const content = `<div class="sl-layer-content" style="${contentStyle}">${regions}</div>`;

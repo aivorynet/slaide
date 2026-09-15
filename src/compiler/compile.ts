@@ -65,6 +65,10 @@ export const STYLE_MAP: Record<string, (v: string) => [string, string]> = {
   radius: (v) => ['border-radius', v],
   border: (v) => ['border', v],
   rotate: (v) => ['transform', /[a-z(]/i.test(v) ? v : `rotate(${v})`], // shape rotation/flip
+  // Sideways text a THEME can own. A photo credit in a 14px-wide column only fits when it runs
+  // vertically; without this the theme could only ask for it in prose and every rebuilt deck
+  // wrapped and clipped it. `writing: vertical` is the readable alias for `vertical-rl`.
+  writing: (v) => ['writing-mode', v === 'vertical' ? 'vertical-rl' : v],
 };
 
 // justify-content for vertically anchored (absolutely positioned) slots, where
@@ -141,6 +145,11 @@ function mapSlotStyle(style: Record<string, string> | undefined, diag?: StyleDia
       if (k === 'color') warnColor(String(v));
       const [prop, val] = fn(String(v));
       out[prop] = val;
+      // A title slot's text renders as a real <h1> (render/html.ts), and a RULE beats the
+      // font-family it would otherwise inherit from this region. Republish the slot's chosen
+      // face as a custom property the heading rule reads first (css.ts `.sl-slot-h`), so a
+      // theme that asked for a specific font on this slot still gets it.
+      if (k === 'font') out['--slot-font'] = val;
     }
   }
   return out;
@@ -287,7 +296,12 @@ function gridAreaTokens(areas: string[] | undefined): Set<string> {
  *  on top of one another (e.g. title printed over body). Exported for direct unit testing. */
 export function checkOverlappingSlots(name: string, def: LayoutDef): Warning | null {
   const areaTokens = gridAreaTokens(def.areas);
-  const orphaned = Object.keys(def.slots ?? {}).filter((s) => !areaTokens.has(s));
+  // A slot with an `anchor` style is absolutely positioned (see mapSlotStyle) — its grid
+  // cell is irrelevant, so it is PLACED, not orphaned. PPTX-imported masters place most
+  // slots this way and would otherwise drown validate in unfixable master-level warnings.
+  const orphaned = Object.keys(def.slots ?? {}).filter(
+    (s) => !areaTokens.has(s) && !(def.slots?.[s]?.style && 'anchor' in def.slots[s].style!),
+  );
   if (orphaned.length === 0) return null;
   const message =
     orphaned.length > 1
@@ -467,8 +481,14 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
     const primarySlot = layoutDef.slots['body'] ? 'body' : slotNames[0] ?? 'default';
     const counter = { n: 0 };
     const regions: RegionIR[] = [];
+    // How many regions with this source name we have already seen on THIS slide. Counted over the
+    // parsed list, BEFORE the skips below, so the ordinal keeps naming the same `:: marker ::` even
+    // when an earlier same-named region is empty or misrouted and never reaches the DOM.
+    const seenByName: Record<string, number> = {};
 
     for (const region of pslide.regions) {
+      const sourceNth = seenByName[region.name] ?? 0;
+      seenByName[region.name] = sourceNth + 1;
       const target = region.name === 'default' ? primarySlot : region.name;
       // `free` is a built-in, layout-independent full-slide layer for absolutely
       // positioned shapes/boxes (placed in the source). Always accepted.
@@ -493,6 +513,7 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
       regions.push({
         name: target,
         source: region.name, // original parsed region name (source-provenance; the slot name may differ for `default`)
+        sourceNth,           // which occurrence of that name this is — see RegionIR.sourceNth
         html,
         slotType: slot.type,
         style: mapSlotStyle(slot.style, { tokens, warnings, line: pslide.sourceLine, slide: i + 1, slot: target }),
@@ -526,7 +547,9 @@ export function compile(parsed: ParsedDeck, master: Master): DeckIR {
       variantName: variantName ?? null,
       grid,
       regions,
-      notes: pslide.notes,
+      // Body `??? …` wins; the documented frontmatter `notes:` key (vocab.ts, spec.md) is the
+      // fallback — it was registered but never read, so it silently did nothing until now.
+      notes: pslide.notes ?? (typeof eff.notes === 'string' ? eff.notes : null),
       buildCount: counter.n,
       morph,
       vars,

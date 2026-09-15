@@ -6,6 +6,27 @@ All notable changes to slaide are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.2.11] - 2026-09-15
+
+### Fixed
+
+- **Speaker notes survive a PowerPoint import.** The importer always read a slide's notes out of
+  `ppt/notesSlides/*.xml`, but the deck writer never put them in the file, so every speaker note
+  was lost the moment a `.pptx` came in — and a deck restyled onto another theme lost them without
+  a trace, because notes only ever show in the presenter overlay. An imported note now lands in the
+  deck as a `??? ` line. Notes are free text, so a note containing `---`, a `:: region ::` line or
+  its own `???` is escaped on the way in and read back exactly as written; before, a bare `---`
+  inside a note would have split the slide in two.
+- **The frontmatter `notes:` key works.** It was listed in the spec and accepted by the parser, but
+  the compiler only ever read the `??? ` body form, so setting it did nothing. A body `??? ` line
+  still wins where both are present.
+
+### Added
+
+- **PowerPoint export writes speaker notes.** Exported `.pptx` files now carry each slide's note in
+  PowerPoint's notes pane, so `.pptx` → slaide → `.pptx` keeps them. Notes stay hidden in PDF and
+  image output, as before.
+
 ## [1.2.10] - 2026-08-17
 
 ### Fixed

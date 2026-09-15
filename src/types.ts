@@ -184,6 +184,12 @@ export interface RegionIR {
    *  rendered DOM back to its source region (the DOM `name` is the slot, which may
    *  differ from the source name for the default region). */
   source: string;
+  /** 0-based ordinal of this region among the slide's source regions that share `source`.
+   *  A well-formed slide names each region once and this is always 0; a slide that carries the
+   *  same `:: name ::` twice (a deck merged by the pre-2026-09-03 duplicate-splice bug, or an
+   *  implicit leading `default` block followed by an explicit `:: default ::`) needs it: without
+   *  it an edit to the SECOND such region is addressed by name alone and rewrites the FIRST. */
+  sourceNth?: number;
   /** Rendered HTML, with build elements carrying data-build. */
   html: string;
   /** Style hints resolved from the slot definition. */

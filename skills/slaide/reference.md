@@ -76,7 +76,7 @@ My Talk
 - **Regions:** `:: name ::` on its own line routes following Markdown into slot `name`. Text before any marker → the main slot (`body`, else the first slot). A near-miss (`::` followed by content that isn't `:: name ::` alone on its line, e.g. `::name` or `:: name :: extra`) warns (`bad-region`) instead of silently rendering as literal text.
 - **Markdown:** standard CommonMark — headings, lists, **bold**, *italic*, `code`, fences, > quotes, links, tables, images. (A single newline is a space; blank line = new paragraph.)
 - **Builds `>>>`:** end an item/block with `>>>` to reveal it; steps auto-number in order, same step = simultaneous. PDF shows all. Add an entrance and timing after the sigil (§4.7).
-- **Notes `??? …`:** a `???` line (until a blank line) is a speaker note — presenter overlay only, hidden from audience and PDF.
+- **Notes `??? …`:** a `???` line (until a blank line) is a speaker note — presenter overlay only, hidden from audience and PDF. A `.pptx` import brings its notes in, and a `.pptx` export writes them back to PowerPoint's notes pane.
 
 ### 4.1 Inline styled spans — `[text]{.class …}`
 

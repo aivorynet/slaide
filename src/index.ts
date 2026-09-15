@@ -174,12 +174,40 @@ function computeInline(p: string, dirs: string[]): string | null {
   return null;
 }
 
+const attrEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+/** Inline every local asset as a data: URI AND stamp the ref it replaced
+ *  (`data-src-ref` / `data-src-ref-poster` / `data-src-ref-bg`).
+ *
+ *  The stamp is what lets the editor write an edited region back to the deck as
+ *  `assets/photo.jpg` instead of 400KB of base64: the DOM keeps the data URI for display,
+ *  the source keeps the stable ref (see restoreAssetRefs in the editor's collectEdits).
+ *  Purely additive — a renderer, a browser and the exporters all ignore the extra attribute. */
 export function inlineAssets(html: string, dirs: string[]): string {
   const cache = new Map<string, string | null>();
   let out = html.replace(/(?:src|poster)="([^"]+)"/g, (m, p) => {
     const d = inlineOne(p, dirs, cache);
     if (!d) return m;
-    return m.startsWith('poster') ? `poster="${d}"` : `src="${d}"`;
+    const poster = m.startsWith('poster');
+    return `${poster ? 'poster' : 'src'}="${d}" ${poster ? 'data-src-ref-poster' : 'data-src-ref'}="${attrEsc(p)}"`;
+  });
+  // A background-image inside an element's own style attribute: inline it and stamp the element,
+  // so a free image shape round-trips by ref too. Runs BEFORE the generic url() pass, which then
+  // skips these (computeInline refuses a data: URI). Only a style holding exactly ONE inlinable
+  // url is stamped — one attribute cannot describe two of them.
+  out = out.replace(/<[a-zA-Z][^>]*>/g, (tag) => {
+    if (tag.indexOf('url(') < 0 || !/\sstyle="/.test(tag)) return tag;
+    return tag.replace(/(\sstyle=")([^"]*)"/, (whole, head: string, css: string) => {
+      const refs: string[] = [];
+      const next = css.replace(/url\((['"]?)([^'")]+)\1\)/g, (u, _q, p: string) => {
+        const d = inlineOne(p, dirs, cache);
+        if (!d) return u;
+        refs.push(p);
+        return `url('${d}')`;
+      });
+      if (!refs.length) return whole;
+      return `${head}${next}"${refs.length === 1 ? ` data-src-ref-bg="${attrEsc(refs[0])}"` : ''}`;
+    });
   });
   out = out.replace(/url\((['"]?)([^'")]+)\1\)/g, (m, _q, p) => {
     const d = inlineOne(p, dirs, cache);

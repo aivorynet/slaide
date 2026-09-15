@@ -47,6 +47,13 @@ function splitSegments(content: string): Segment[] {
 
 const REGION_RE = /^::\s*([\w-]+)\s*::\s*$/;
 
+/** Decode one escaped note line. A speaker note is free text — a PowerPoint note can hold a
+ *  bare `---`, a `:: region ::` line or its own `???`, each of which would end the note or
+ *  split the deck. The importer writes those with a leading `\` (emit.ts notesBlock); this is
+ *  the matching decode, so the note reads back exactly as the author typed it. */
+const unescapeNoteLine = (l: string): string =>
+  /^\\(---+\s*|::\s*[\w-]+\s*::\s*|\?\?\?.*)$/.test(l) ? l.slice(1) : l;
+
 // Keys that legitimately appear in slide frontmatter. Used only to detect a
 // config-shaped *body* mistakenly eaten as frontmatter (see ambiguous-frontmatter).
 // Exported as the canonical frontmatter-key set (see src/vocab.ts).
@@ -57,10 +64,11 @@ export const KNOWN_SLIDE_KEYS = new Set([
   'title', 'author', 'company', 'date', 'subtitle',
 ]);
 
-// A line that looks like an attempted region marker (starts `::` then non-space)
-// but doesn't match REGION_RE — e.g. `::num` (no spaces) or `:: num :: x` (trailing
-// content). Used only to lint; REGION_RE itself still decides actual routing.
-const NEAR_MISS_REGION_RE = /^::\s*\S/;
+// A line that looks like an attempted region marker (starts `::`) but doesn't match
+// REGION_RE — e.g. `::num` (no spaces), `:: num :: x` (trailing content), or a bare `::`
+// "closer" (the dialect has none; the line stays literal body text and renders as `::`).
+// Used only to lint; REGION_RE itself still decides actual routing.
+const NEAR_MISS_REGION_RE = /^::/;
 
 /** Split a slide body into regions and extract speaker notes. The `::` region
  *  markers, `??? notes`, and the build/blank-line splitting are all suppressed
@@ -94,7 +102,7 @@ function parseBody(text: string, warnings?: Warning[], srcLine?: number): { regi
     }
     const m = line.match(/^\?\?\?\s?(.*)$/);
     if (m) {
-      const chunk = [m[1]];
+      const chunk = [unescapeNoteLine(m[1])];
       let j = i + 1;
       while (
         j < lines.length &&
@@ -102,7 +110,7 @@ function parseBody(text: string, warnings?: Warning[], srcLine?: number): { regi
         !REGION_RE.test(lines[j]) &&
         !CODE_FENCE.test(lines[j])
       ) {
-        chunk.push(lines[j]);
+        chunk.push(unescapeNoteLine(lines[j]));
         j++;
       }
       noteChunks.push(chunk.join('\n').trim());

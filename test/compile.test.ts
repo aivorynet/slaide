@@ -210,6 +210,25 @@ test('overlapping-slots: a layout whose grid never names any of its slots warns 
   );
 });
 
+test('overlapping-slots: an anchored slot outside the grid does not warn (absolutely positioned)', () => {
+  const m: Master = {
+    name: 'ov4',
+    layouts: {
+      // PPTX-imported shape: flow slots in the grid, the rest placed by `anchor` (absolute).
+      imported: {
+        areas: ['title'],
+        slots: {
+          title: { type: 'title' },
+          body: { type: 'body', style: { anchor: '4.7% 27.2% 44.0% 61.5%' } },
+          pic: { type: 'media', style: { anchor: '51.2% 27.1% 44.1% 61.1%' } },
+        },
+      },
+    },
+  };
+  const out = compile(parseDeck('---\ntitle: t\n---\nlayout: imported\n---\nHi'), m);
+  expect(out.warnings.map((w) => w.code)).not.toContain('overlapping-slots');
+});
+
 test('overlapping-slots: a well-formed multi-area layout does not warn', () => {
   const m: Master = {
     name: 'ov2',

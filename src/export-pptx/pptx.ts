@@ -36,6 +36,10 @@ interface Run {
   font?: string;
   breakLine?: boolean;
   bullet?: boolean;
+  /** px from the block's left edge to this list item's text — becomes the bullet's marL/indent */
+  bulletIndent?: number;
+  /** px of CSS margin above this paragraph — becomes <a:spcBef>, so list items keep their gaps */
+  spaceBefore?: number;
   b?: string | null; // data-build group of the paragraph this run belongs to (null = no build)
 }
 // A filled / bordered rectangle: a card, pill, full-slide colour panel, or free-layer box.
@@ -56,11 +60,15 @@ interface ShapeBox {
 interface TextBox {
   x: number; y: number; w: number; h: number; // px, canvas-relative
   align: string;
-  lineSpacing?: number; // multiple of font size (e.g. 1.2)
+  lineSpacing?: number; // multiple of font size (e.g. 1.2) — sanity guard only
+  /** the CSS line box in px — exported as an exact <a:spcPts> line height */
+  lhPx?: number;
   /** the browser fits this block on one line — PowerPoint must not be allowed to wrap it */
   oneLine?: boolean;
   /** widest line the browser actually drew — can exceed `w` when a long word overflows */
   textW?: number;
+  /** CSS writing-mode is vertical — becomes <a:bodyPr vert="…"> so the run reads top-to-bottom */
+  vert?: 'vert' | 'vert270';
   runs: Run[];
 }
 interface RegionItem {
@@ -72,8 +80,9 @@ interface RegionItem {
   borderColor?: string; borderAlpha?: number; borderWidth?: number; radius?: number;
   // img fields
   src?: string; fit?: string; cap?: string; data?: string; shot?: boolean; fx?: boolean;
+  natW?: number; natH?: number; // intrinsic pixel size — drives the object-fit crop
   // text fields
-  align?: string; lineSpacing?: number; oneLine?: boolean; textW?: number; runs?: Run[];
+  align?: string; lineSpacing?: number; lhPx?: number; oneLine?: boolean; textW?: number; vert?: 'vert' | 'vert270'; runs?: Run[];
 }
 interface RegionBox {
   items: RegionItem[];
@@ -231,32 +240,87 @@ const EXTRACT = String.raw`
           if(block && runs.length && !runs[runs.length-1].breakLine) runs[runs.length-1].breakLine=true;
           var first = runs.length;
           walk(ch, childBuild, runs);
-          if(tag==='li' && runs[first]) runs[first].bullet=true;
+          if(tag==='li' && runs[first]){
+            runs[first].bullet=true;
+            // where the browser starts this item's TEXT (the list's own padding, not the marker).
+            // PowerPoint's bullet is a hanging indent, so this becomes marL/indent — without it
+            // pptxgenjs's 0.375in default sets both the text's left edge and its wrap width.
+            var lcs = getComputedStyle(ch);
+            runs[first].bulletLeft = box(ch).x + (parseFloat(lcs.paddingLeft)||0) + (parseFloat(lcs.borderLeftWidth)||0);
+          }
           if(block && runs.length && !runs[runs.length-1].breakLine) runs[runs.length-1].breakLine=true;
         }
       });
     }
-    // Widest line the browser actually drew. It can exceed the element's own box: a word too
-    // long to fit overflows in CSS, where PowerPoint would hyphen-less break it mid-word
-    // ("Verbesserungsvorschlä / ge"). Client rects come per inline fragment, so group by line.
-    function lineWidth(el){
-      var r = document.createRange();
-      r.selectNodeContents(el);
-      var rects = r.getClientRects();
-      var lines = {}, max = 0;
-      for(var i=0;i<rects.length;i++){
-        var q = rects[i];
-        if(!q.width) continue;
-        var key = Math.round(q.top);
-        var cur = lines[key] || (lines[key] = { l:q.left, r:q.right });
-        if(q.left < cur.l) cur.l = q.left;
-        if(q.right > cur.r) cur.r = q.right;
-        if(cur.r - cur.l > max) max = cur.r - cur.l;
+    // The lines the browser actually drew, slide-relative and sorted top-down. Client rects come
+    // one per inline fragment, so fragments are banded into lines by their vertical position —
+    // a fixed key would split one line in two wherever an inline span has its own font size.
+    // Drives the wrap width (a line can be wider than the element's box: a word too long to fit
+    // overflows in CSS, where PowerPoint would break it mid-word, "Verbesserungsvorschlä / ge")
+    // AND the block's tight vertical extent (see unitFromEl).
+    function lineRects(el, lhPx){
+      // TEXT nodes only: a range over the element also reports the rect of every block box it
+      // contains, and a 2-line <li>'s own 36px box would then read as one 36px-tall "line".
+      var arr = [], stack = [el];
+      while(stack.length){
+        var n = stack.pop();
+        for(var i=n.childNodes.length-1;i>=0;i--){
+          var ch = n.childNodes[i];
+          if(ch.nodeType===3){
+            if(!ch.textContent || !ch.textContent.trim()) continue;
+            var r = document.createRange();
+            r.selectNodeContents(ch);
+            var rs = r.getClientRects();
+            for(var j=0;j<rs.length;j++) if(rs[j].width) arr.push(rs[j]);
+          } else if(ch.nodeType===1){
+            var tg = ch.tagName.toLowerCase();
+            if(tg==='img' || NOTEXT[tg]===1 || isShot(ch)) continue;
+            stack.push(ch);
+          }
+        }
       }
-      return max;
+      arr.sort(function(a,b){ return a.top - b.top; });
+      var band = Math.max(2, (lhPx||12) * 0.5), lines = [];
+      for(var g=0;g<arr.length;g++){
+        var q = arr[g], cur = lines[lines.length-1];
+        if(cur && q.top < cur.t + band){
+          if(q.left < cur.l) cur.l = q.left;
+          if(q.right > cur.r) cur.r = q.right;
+          if(q.bottom > cur.b) cur.b = q.bottom;
+        } else lines.push({ t:q.top, b:q.bottom, l:q.left, r:q.right });
+      }
+      for(var k=0;k<lines.length;k++){
+        lines[k].t -= sRect.top; lines[k].b -= sRect.top;
+        lines[k].l -= sRect.left; lines[k].r -= sRect.left;
+      }
+      return lines;
+    }
+    // Half the CSS leading: the gap between the font's em box and the line box, above and below.
+    // Zero when the line height is 'normal' (no px value to lean on), NEGATIVE where the leading
+    // is tighter than the font (a display title at leading 1.05) — the em box then sticks out.
+    function halfLead(lhBox, r){ return lhBox ? (lhBox - (r.b - r.t)) / 2 : 0; }
+    // vertical-rl / vertical-lr both rotate Latin glyphs 90° clockwise (= OOXML 'vert');
+    // only sideways-lr turns them the other way (= 'vert270').
+    function vertOf(cs){
+      var wm = cs.writingMode || cs.webkitWritingMode || '';
+      if(wm === 'sideways-lr') return 'vert270';
+      if(wm.indexOf('vertical-') === 0 || wm === 'sideways-rl' || wm === 'tb-rl') return 'vert';
+      return undefined;
     }
     // measure one element as a text box (null if it holds no text)
     function unitFromEl(el, curBuild){
+      // writing-mode usually rides on the inline <span> a photo credit is wrapped in, not on the
+      // block we measure. Measure that span instead, so the box and the run both describe the
+      // rotated text — otherwise PowerPoint wraps it horizontally inside a tall, narrow column.
+      var vert = vertOf(getComputedStyle(el));
+      if(!vert){
+        var txt = (el.textContent||'').trim();
+        var kids = el.querySelectorAll('*');
+        for(var vi=0; vi<kids.length; vi++){
+          var kv = vertOf(getComputedStyle(kids[vi]));
+          if(kv && txt && (kids[vi].textContent||'').trim() === txt){ el = kids[vi]; vert = kv; break; }
+        }
+      }
       var runs = [];
       walk(el, curBuild, runs);
       if(runs.length) runs[runs.length-1].breakLine = false; // no trailing empty paragraph
@@ -265,15 +329,70 @@ const EXTRACT = String.raw`
       var b = box(el);
       var lh = parseFloat(cs.lineHeight), fs = parseFloat(cs.fontSize);
       var ls = (isFinite(lh) && isFinite(fs) && fs>0) ? Math.round(lh/fs*100)/100 : undefined;
-      // Boxes the browser fits on one line (a shrink-to-fit footer band, a headline sized to
-      // its column) are exactly as wide as their text. PowerPoint measures a hair wider and
-      // breaks the line — "Mitarbeiterbefragu / ng" — so mark them and turn wrapping off.
       var lhPx = isFinite(lh) ? lh : (isFinite(fs) ? fs*1.2 : 0);
+      // A line-height of 'normal' has no px value to lean on: the em box IS the line box there.
+      var lhBox = isFinite(lh) ? lh : 0;
+      var lines = vert ? [] : lineRects(el, lhPx);
       var padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0) +
                  (parseFloat(cs.borderTopWidth)||0) + (parseFloat(cs.borderBottomWidth)||0);
-      var oneLine = lhPx>0 && (b.h - padY) < lhPx*1.6;
-      var unit = { x:b.x, y:b.y, w:b.w, h:b.h, align: cs.textAlign, lineSpacing: ls,
-        oneLine: oneLine || undefined, textW: lineWidth(el), runs: runs };
+      // A block the browser fits on one line (a shrink-to-fit footer band, a headline sized to
+      // its column) must never be allowed to wrap: PowerPoint measures a hair wider and would
+      // break it — "Mitarbeiterbefragu / ng".
+      var oneLine = lines.length ? lines.length === 1 : (lhPx>0 && (b.h - padY) < lhPx*1.6);
+      var maxW = 0;
+      for(var lni=0; lni<lines.length; lni++){ if(lines[lni].r - lines[lni].l > maxW) maxW = lines[lni].r - lines[lni].l; }
+      // The exported box is the TEXT's box, not the element's: PowerPoint gets zero insets, so
+      // any padding/border left in the box widens the wrap width (a bullet the browser breaks
+      // over two lines came back as one) and any spare height below the text pushed the whole
+      // block down, because a fixed-height slot centred its shorter content (anchor="ctr").
+      var bl = (parseFloat(cs.borderLeftWidth)||0) + (parseFloat(cs.paddingLeft)||0);
+      var br = (parseFloat(cs.borderRightWidth)||0) + (parseFloat(cs.paddingRight)||0);
+      var bulleted = false;
+      for(var bi=0; bi<runs.length; bi++) if(runs[bi].bullet) bulleted = true;
+      var bx = b.x, bw = b.w;
+      // A list keeps its border box: its padding is the marker gutter, which rides along as the
+      // bullet's own hanging indent (marL) — stripping it as well would indent the text twice.
+      if(!bulleted && !vert && (bl || br)){ bx = b.x + bl; bw = Math.max(1, b.w - bl - br); }
+      for(var bj=0; bj<runs.length; bj++){
+        if(runs[bj].bulletLeft !== undefined){
+          runs[bj].bulletIndent = Math.max(0, Math.round((runs[bj].bulletLeft - bx) * 10) / 10) || undefined;
+          delete runs[bj].bulletLeft;
+        }
+      }
+      // A list is ONE PowerPoint box and PowerPoint stacks its paragraphs at the exact line
+      // height, so the CSS margin between items has to come back as <a:spcBef> — without it
+      // every item after the first creeps up, and the last one by a whole margin.
+      if(!vert && lhPx>0){
+        var lis = el.querySelectorAll('li');
+        if(lis.length){
+          var bulletRuns = [];
+          for(var ri=0; ri<runs.length; ri++) if(runs[ri].bullet) bulletRuns.push(runs[ri]);
+          var flow = null;
+          for(var ii=0; ii<lis.length && ii<bulletRuns.length; ii++){
+            var ll = lineRects(lis[ii], lhPx);
+            if(!ll.length) continue;
+            var lTop = ll[0].t - halfLead(lhBox, ll[0]);
+            if(flow !== null && lTop - flow > 0.5) bulletRuns[ii].spaceBefore = Math.round((lTop - flow)*10)/10;
+            flow = lTop + ll.length * lhPx;
+          }
+        }
+      }
+      var by = b.y, bh = b.h;
+      if(lines.length){
+        // The line BOX, not the glyph box: a client rect is the font's own em box, so add the
+        // leading back on at the top and the bottom to land on the line box the browser drew.
+        var hlT = halfLead(lhBox, lines[0]);
+        var last = lines[lines.length-1];
+        var hlB = halfLead(lhBox, last);
+        by = lines[0].t - hlT;
+        bh = Math.max(lhPx || 0, (last.b + hlB) - by);
+      }
+      // The CSS line box in px. PowerPoint's percentage line spacing is a multiple of the FONT's
+      // own line height (~1.15em), not of the em, so a leading of 1.55 rendered ~15% too tall and
+      // every block overflowed its box. Exported as exact points instead (see lnSpc below).
+      var lhCss = isFinite(lh) ? lh : undefined;
+      var unit ={ x:bx, y:by, w:bw, h:bh, align: cs.textAlign, lineSpacing: ls, lhPx: lhCss,
+        oneLine: (vert ? false : oneLine) || undefined, textW: vert ? 0 : maxW, vert: vert, runs: runs };
       if(_curDomIdx) unit._o = _curDomIdx.get(el) || 0;
       return unit;
     }
@@ -375,6 +494,9 @@ const EXTRACT = String.raw`
           var icap = String(capId++);
           im.setAttribute('data-sl-cap', icap);
           items.push({ _k:'img', _o: _curDomIdx.get(im) || 0, x:ib.x, y:ib.y, w:ib.w, h:ib.h, src: im.src,
+            // intrinsic size: without it 'cover'/'contain' have no aspect to crop against and
+            // PowerPoint just stretches the bitmap into the box.
+            natW: im.naturalWidth || undefined, natH: im.naturalHeight || undefined,
             fit: getComputedStyle(im).objectFit || undefined, cap: icap,
             fx: (repainted(im, slideEl) || /^data:image\/svg|\.svg(\?|$)/i.test(im.src)) || undefined });
         }
@@ -428,7 +550,14 @@ function mapAlign(a: string): 'left' | 'center' | 'right' | 'justify' {
   return 'left';
 }
 
-const PX_PER_IN = 96;
+// The canvas is a design space in CSS px, not a paper size: masters ship 1280x720, 1920x1080 and
+// 720x405 for the same 16:9 slide. Dividing by a fixed 96 dpi turned each of those into a
+// different PowerPoint page (13.33in, 20in, 7.5in wide) and moved every reported point size with
+// it — a 720-wide deck exported its 22.5px title at 16.9pt on a half-size slide.
+// Both standard PowerPoint pages are 7.5in tall (13.333x7.5 widescreen, 10x7.5 for 4:3), so pin
+// the height and derive the dpi. 1280x720 still resolves to exactly 96, so nothing else moves.
+const SLIDE_H_IN = 7.5;
+const pxPerInch = (canvasH: number) => (canvasH > 0 ? canvasH / SLIDE_H_IN : 96);
 
 // ---- capture styling -------------------------------------------------------------------------
 // While element-shooting a chart / inline svg / repainted image, every painted ground behind it
@@ -622,6 +751,11 @@ export async function exportPptx(
   }
   const PptxGen = mod.default ?? mod;
   const pptx = new PptxGen();
+  const PX_PER_IN = pxPerInch(H);
+  // Font sizes were measured in the browser as px*0.75 (= px at 96 dpi); re-base them on the
+  // deck's real dpi so a point in the file is a point on the page.
+  const PT_SCALE = 96 / PX_PER_IN;
+  const ptOf = (px: number) => Math.round((px * 72) / PX_PER_IN * 10) / 10;
   pptx.defineLayout({ name: 'slaide', width: W / PX_PER_IN, height: H / PX_PER_IN });
   pptx.layout = 'slaide';
   if (ir.meta.title) pptx.title = ir.meta.title;
@@ -635,10 +769,15 @@ export async function exportPptx(
   // one map per slide (see injectAnim).
   const slideFills: Record<string, string>[] = [];
 
-  for (const data of slidesData) {
+  for (const [si, data] of slidesData.entries()) {
     const slide = pptx.addSlide();
     const fills: Record<string, string> = {};
     slideFills.push(fills);
+    // Speaker notes round-trip: pptxgenjs writes ppt/notesSlides/* plus its notesMaster and
+    // content-types itself. Without this an imported note survives into the deck and dies on
+    // the way back out to PowerPoint.
+    const notes = ir.slides[si]?.notes;
+    if (notes) slide.addNotes(notes);
     if (data.bg?.type === 'color') slide.background = { color: data.bg.color };
     else if (data.bg?.type === 'raster' && data.bg.data) slide.background = { path: 'bg.jpg', data: stripData(data.bg.data) };
 
@@ -653,7 +792,7 @@ export async function exportPptx(
             x: inch(s.x), y: inch(s.y), w: inch(s.w), h: inch(s.h),
             fill: s.fill ? { color: s.fill, transparency: transp(s.fillAlpha) } : { type: 'none' },
           };
-          if (s.borderColor) shapeOpts.line = { color: s.borderColor, transparency: transp(s.borderAlpha), width: Math.max(0.5, (s.borderWidth ?? 1) * 0.75) };
+          if (s.borderColor) shapeOpts.line = { color: s.borderColor, transparency: transp(s.borderAlpha), width: Math.max(0.5, ptOf(s.borderWidth ?? 1)) };
           if (s.radius) shapeOpts.rectRadius = inch(Math.min(s.radius, s.w / 2, s.h / 2));
           const grad = s.grad ? gradFillXml(s.grad, s.w, s.h) : null;
           if (grad) {
@@ -666,9 +805,24 @@ export async function exportPptx(
           const payload = im.data ?? (im.src?.startsWith('data:') ? im.src : null);
           if (!payload) continue;
           const imgOpts: any = { data: stripData(payload), x: inch(im.x), y: inch(im.y), w: inch(im.w), h: inch(im.h) };
-          if (!im.shot) {
-            if (im.fit === 'cover') imgOpts.sizing = { type: 'cover', w: inch(im.w), h: inch(im.h) };
-            else if (im.fit === 'contain') imgOpts.sizing = { type: 'contain', w: inch(im.w), h: inch(im.h) };
+          // pptxgenjs derives the <a:srcRect> crop from the top-level w/h (= the SOURCE aspect)
+          // against sizing.w/h (= the box). Passing the box size for both made imgRatio ===
+          // boxRatio, so the crop was always 0% and every 'cover' image came out stretched.
+          const natRatio = im.natW && im.natH ? im.natH / im.natW : 0;
+          if (!im.shot && natRatio > 0 && (im.fit === 'cover' || im.fit === 'contain')) {
+            if (im.fit === 'cover') {
+              imgOpts.h = inch(im.w) * natRatio; // any size with the source aspect; sizing wins on output
+              imgOpts.sizing = { type: 'cover', w: inch(im.w), h: inch(im.h) };
+            } else {
+              // 'contain' letterboxes: place the fitted rect directly rather than lean on
+              // pptxgenjs, whose contain path emits a negative srcRect that PowerPoint ignores.
+              const scale = Math.min(im.w / im.natW!, im.h / im.natH!);
+              const fw = im.natW! * scale, fh = im.natH! * scale;
+              imgOpts.x = inch(im.x + (im.w - fw) / 2);
+              imgOpts.y = inch(im.y + (im.h - fh) / 2);
+              imgOpts.w = inch(fw);
+              imgOpts.h = inch(fh);
+            }
           }
           slide.addImage(imgOpts);
         } else if (item._k === 'shot') {
@@ -682,24 +836,56 @@ export async function exportPptx(
               italic: run.italic,
               underline: run.underline ? { style: 'sng' as const } : undefined,
               color: run.color,
-              fontSize: run.sizePt,
-              charSpacing: run.spacePt,
+              fontSize: run.sizePt === undefined ? undefined : Math.round(run.sizePt * PT_SCALE * 10) / 10,
+              charSpacing: run.spacePt === undefined ? undefined : Math.round(run.spacePt * PT_SCALE * 100) / 100,
               fontFace: run.font,
               breakLine: run.breakLine,
-              bullet: run.bullet ? true : undefined,
+              // The browser's own marker gutter, as PowerPoint's hanging indent. Left to
+              // pptxgenjs it is a flat 0.375in, which both shifts the text and eats the wrap
+              // width, so a list wrapped in different places than the render.
+              // (a falsy `indent` would fall back to pptxgenjs's default, so never pass 0)
+              bullet: run.bullet ? { indent: Math.max(0.01, ptOf(run.bulletIndent ?? 0)) } : undefined,
+              paraSpaceBefore: run.spaceBefore ? ptOf(run.spaceBefore) : undefined,
             },
           }));
-          const slack = tb.oneLine ? 0 : Math.max(tb.w, tb.textW ?? 0) * 1.02 - tb.w;
+          // Vertical text runs down the box height, so the horizontal wrap slack below is on the
+          // wrong axis — give it the height instead and let the single line overflow rather than
+          // start a second column.
+          // The box is the CSS content box, so its width IS the browser's wrap width — widening
+          // it "for safety" is what let PowerPoint fit a bullet the render broke over two lines.
+          // Two boxes still need slack:
+          //  * one that hugs its own text (a shrink-to-fit chrome band, a heading sized to its
+          //    column) wraps on the pixel, and PowerPoint measures a hair wider — 2% cushion;
+          //  * one whose text overflows it (a word too long for the column, which CSS lets stick
+          //    out and PowerPoint would break mid-word) — widen to the line.
           const al = mapAlign(tb.align || 'left');
+          const hugs = (tb.textW ?? 0) >= tb.w - 0.5 && al !== 'justify';
+          const slack = tb.vert || tb.oneLine ? 0 : hugs ? Math.max(tb.w, tb.textW ?? 0) * 1.02 - tb.w : 0;
+          // Line height as exact points (<a:spcPts>), never as a percentage. PowerPoint measures
+          // a percentage against the FONT's own line height (~1.15em), not against the em, so a
+          // CSS leading of 1.55 rendered ~15% too tall: each block outgrew its measured box and
+          // ran into the block below it. Vertical text stacks its lines across the box width, so
+          // a height taken from the horizontal line box means nothing there — leave it to
+          // PowerPoint. `line-height: normal` (no px value) likewise keeps the natural height.
+          const lnSpacePt =
+            !tb.vert && tb.lhPx && tb.lineSpacing && tb.lineSpacing > 0.5 && tb.lineSpacing < 3
+              ? ptOf(tb.lhPx)
+              : undefined;
           const lead = al === 'right' ? slack : al === 'center' ? slack / 2 : 0;
           slide.addText(runs as any, {
             x: inch(tb.x - lead), y: inch(tb.y), w: inch(tb.w + slack), h: inch(tb.h),
             align: al,
-            valign: 'middle',
+            // Top, never middle: the box is the measured TEXT box, so its top IS where the
+            // browser drew the first line. anchor="ctr" only agrees while the box hugs its
+            // content — inside a fixed-height slot it pushed every shorter block downwards.
+            valign: 'top',
             margin: 0,
             autoFit: false,
-            wrap: !tb.oneLine,
-            lineSpacingMultiple: tb.lineSpacing && tb.lineSpacing > 0.5 && tb.lineSpacing < 3 ? tb.lineSpacing : undefined,
+            vert: tb.vert,
+            wrap: !tb.oneLine && !tb.vert,
+            lineSpacing: lnSpacePt,
+            paraSpaceBefore: 0,
+            paraSpaceAfter: 0,
           });
         }
       }

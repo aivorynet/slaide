@@ -216,7 +216,7 @@ body.slv-bstrip-on #slv-bstrip{ display:flex; }
 .slv-bthumb-box{ position:relative; transform-origin:0 0; }
 .slv-bthumb:hover .slv-bthumb-frame{ border-color:var(--slv-active); }
 .slv-bthumb-active .slv-bthumb-frame{ border-color:var(--slv-accent); box-shadow:0 0 0 2px var(--slv-accent); }
-.slv-bthumb-n{ font-size:10px; font-weight:600; color:var(--slv-dim); }
+.slv-bthumb-n{ font-size:11px; font-weight:600; color:var(--slv-dim); }
 
 /* ---- AI chat panel (left drawer, hosted tier) --------------------------- */
 #slv-chat{
@@ -258,7 +258,7 @@ body.slv-shown #slv-chat-head, body.slv-pinned #slv-chat-head{ padding-top:calc(
 #slv-tabs, #slv-band{ max-height:0; overflow:hidden; opacity:0;
   transition:max-height .2s ease, opacity .14s ease, padding .2s ease; }
 body.slv-editmode #slv-tabs{ max-height:44px; opacity:1; }
-body.slv-editmode #slv-band{ max-height:72px; opacity:1; }
+body.slv-editmode #slv-band{ max-height:78px; opacity:1; }
 
 /* tab strip: mode switch · tabs · Save */
 #slv-tabs{ display:flex; align-items:center; gap:10px; padding:0 12px; border-top:1px solid transparent; }
@@ -268,7 +268,7 @@ body.slv-editmode #slv-tabs{ padding:5px 12px; border-top-color:var(--slv-line);
   font-size:12.5px; font-weight:550; color:var(--slv-dim); transition:color .12s, background .12s; }
 .slv-tab:hover{ color:var(--slv-ink); background:var(--slv-soft); }
 .slv-tab[aria-selected="true"]{ color:var(--slv-ink); }
-.slv-tab[aria-selected="true"]::after{ content:""; position:absolute; left:11px; right:11px; bottom:-5px;
+.slv-tab[aria-selected="true"]::after{ content:""; position:absolute; left:11px; right:11px; bottom:0;
   height:2px; border-radius:2px; background:linear-gradient(90deg,var(--slv-accent),#6FA8DC); }
 
 /* mode switch (Slides | Theme) */
@@ -284,8 +284,9 @@ body.slv-editmode #slv-tabs{ padding:5px 12px; border-top-color:var(--slv-line);
 body.slv-editmode #slv-band{ padding:6px 12px 8px; border-top:1px solid var(--slv-line); }
 .slv-bandtab{ display:none; align-items:stretch; }
 .slv-bandtab.slv-active{ display:flex; }
+#slv-band [hidden]{ display:none !important; }
 #slv-band .slv-gcol{ display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:0 12px; }
-#slv-band .slv-glabel{ font-size:9.5px; font-weight:500; letter-spacing:.04em; text-transform:uppercase;
+#slv-band .slv-glabel{ font-size:11px; font-weight:500; letter-spacing:.04em; text-transform:uppercase;
   color:var(--slv-dim); line-height:1; opacity:.8; padding-left:9px; }
 #slv-band .slv-grp{ display:flex; align-items:center; gap:4px; }
 #slv-band .slv-div{ width:1px; align-self:stretch; margin:3px 2px; background:var(--slv-line); opacity:.55; }
@@ -452,6 +453,7 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
       <button class="slv-tab" data-tab="home" role="tab" aria-selected="true">Home</button>
       <button class="slv-tab" data-tab="insert" role="tab" aria-selected="false">Insert</button>
       <button class="slv-tab" data-tab="arrange" role="tab" aria-selected="false">Arrange</button>
+      <button class="slv-tab" data-tab="animations" role="tab" aria-selected="false">Animations</button>
     </div>
     <div class="slv-sp"></div>
     <button class="slv-btn slv-save" id="slv-save" title="Save edits to the source file">Save</button>
@@ -545,6 +547,48 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
         </div>
       </div>
     </div>
+    <!-- Animations: slide transition · element animation · animation pane toggle · preview -->
+    <div class="slv-bandtab" data-tab="animations">
+      <div class="slv-gcol" hidden>
+        <span class="slv-glabel">Slide transition</span>
+        <div class="slv-grp" aria-label="Slide transition">
+          <select id="slv-anim-trans" title="Transition style" style="width:104px;height:26px;font-size:11px;padding:0 4px;border:1px solid var(--slv-line);border-radius:4px;background:var(--slv-bg);color:var(--slv-ink);cursor:pointer;"></select>
+          <input id="slv-anim-trans-ms" type="number" min="0" max="4000" step="50" value="400" title="Duration (ms)" style="width:56px;height:26px;font-size:11px;padding:0 4px;border:1px solid var(--slv-line);border-radius:4px;background:var(--slv-bg);color:var(--slv-ink);text-align:center;">
+          <button class="slv-btn" id="slv-anim-trans-all" type="button" title="Apply this transition and duration to every slide">Apply to all</button>
+        </div>
+      </div>
+      <div class="slv-div" hidden></div>
+      <div class="slv-gcol" id="slv-anim-el-grp">
+        <span class="slv-glabel" id="slv-anim-el-label">Select an element</span>
+        <div class="slv-grp" aria-label="Element animation">
+          <select id="slv-anim-entrance" title="Entrance effect" style="width:104px;height:26px;font-size:11px;padding:0 4px;border:1px solid var(--slv-line);border-radius:4px;background:var(--slv-bg);color:var(--slv-ink);cursor:pointer;"></select>
+          <button class="slv-btn slv-icon" id="slv-anim-add" type="button" title="Add animation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add animation
+          </button>
+        </div>
+      </div>
+      <div class="slv-div"></div>
+      <div class="slv-gcol" hidden>
+        <span class="slv-glabel">Pane</span>
+        <div class="slv-grp" aria-label="Animation pane">
+          <button class="slv-btn" id="slv-anim-pane-btn" aria-pressed="false" type="button" title="Show the animation order and timing">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+            Animation pane
+          </button>
+        </div>
+      </div>
+      <div class="slv-div" hidden></div>
+      <div class="slv-gcol">
+        <span class="slv-glabel">Preview</span>
+        <div class="slv-grp" aria-label="Preview">
+          <button class="slv-btn" id="slv-anim-play" type="button" title="Play this slide's transition and builds">
+            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.5v13a1 1 0 0 0 1.54.84l10-6.5a1 1 0 0 0 0-1.68l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>
+            Play slide
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -552,6 +596,10 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
   <button class="slv-item" data-cmd="open" role="menuitem">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
     Open…
+  </button>
+  <button class="slv-item" data-cmd="rename" role="menuitem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    Rename…
   </button>
   <button class="slv-item" id="slv-mi-save" data-cmd="save" role="menuitem" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -590,6 +638,13 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     Export .slaidec…
   </button>
   <div class="slv-menu-div"></div>
+  <!-- Interface language. Like the theme item below it, the label names the language you would
+       SWITCH TO, so one line does the whole job. Hidden in the hosted editor: that page follows
+       the website's own DE|EN switch. -->
+  <button class="slv-item" id="slv-mi-lang" data-cmd="lang" role="menuitem" title="Switch the interface language">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h10"/><path d="M9 3v2c0 4.4-2.7 8-6 8"/><path d="M5 9c0 2.8 2.7 5.2 6 6"/><path d="M12 20l4-9 4 9"/><path d="M13.5 17h5"/></svg>
+    <span id="slv-mi-lang-label">Deutsch</span>
+  </button>
   <button class="slv-item" id="slv-mi-theme" data-cmd="theme" role="menuitem" title="Switch the viewer chrome between light and dark">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
     <span id="slv-mi-theme-label">Dark theme</span>
@@ -791,7 +846,11 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     };
   }
 
-  var HOST = window.__SLV_HOST__ = (WEB ? makeWebHost(WEB) : makeDesktopHost());
+  // A host may install its own adapter BEFORE this script runs and we keep it. That is the seam
+  // an embedder uses when neither transport fits: the Atlassian Confluence app, for example,
+  // renders the deck in a sandboxed iframe and relays saveEdits to its parent frame. With no
+  // pre-installed adapter this is byte-for-byte the old behaviour.
+  var HOST = window.__SLV_HOST__ = (window.__SLV_HOST__ || (WEB ? makeWebHost(WEB) : makeDesktopHost()));
   // Native: relay this window's slide moves to Rust, which mirrors them onto the audience window
   // (the second screen) when presenting on another display. Web uses BroadcastChannel instead.
   if(!WEB){
@@ -929,6 +988,9 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
   // Loaded/persisted through the host adapter: native viewer → window.__SLV_PREFS__ + IPC;
   // web editor → localStorage. Both default ON when absent (plain web build / first run).
   var PREFS = HOST.loadPrefs();
+  // Animation pane on/off (Animations tab). Set by initAnim's setPaneOn — declared here (not
+  // inside initAnim) so savePrefs, defined before it, can read the current value.
+  var animPaneOn = false;
   // ---- chrome theme ------------------------------------------------------
   // Native: saved pref (light default, dark toggle). Hosted: follow the WEBSITE's appearance,
   // injected as window.__SLV_WEB__.theme — the site owns it, so we don't offer a divergent toggle.
@@ -947,10 +1009,40 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
     HOST.savePrefs({
       toolbar_pinned: pinned,
       slides_visible: q('#slv-thumbs').classList.contains('slv-open'),
-      theme: curTheme()
+      theme: curTheme(),
+      lang: langPref,
+      anim_pane_on: animPaneOn
     });
   }
   function toggleTheme(){ if(WEB) return; applyTheme(curTheme() === 'dark' ? 'light' : 'dark'); savePrefs(); }
+
+  // ---- interface language -------------------------------------------------
+  // Native only. `i18n.js` (injected before this ribbon) holds the German and does one pass over
+  // the document, so the ribbon, the editor, the inspector and Theme Studio all follow — and the
+  // DECK never does. No saved choice means "follow the machine", read from navigator.language.
+  //
+  // Going back to English RELOADS: a translated node no longer carries its English source, and
+  // keeping a shadow copy of the whole document to undo one pass is not worth it.
+  var I18N = window.__slvI18n || null;
+  var langPref = (PREFS.lang === 'de' || PREFS.lang === 'en') ? PREFS.lang : null;
+  function osLang(){ return String(navigator.language || 'en').slice(0,2).toLowerCase(); }
+  var curLang = langPref || (osLang() === 'de' ? 'de' : 'en');
+  function applyLangLabel(){
+    var lbl = q('#slv-mi-lang-label');                 // the item offers the OTHER language
+    if(lbl) lbl.textContent = (curLang === 'de') ? 'English' : 'Deutsch';
+  }
+  function toggleLang(){
+    if(WEB || !I18N) return;
+    var next = (curLang === 'de') ? 'en' : 'de';
+    var reload = I18N.needsReload(next);
+    curLang = next;
+    langPref = next;
+    savePrefs();
+    if(reload) HOST.reload(); else { I18N.set(next); applyLangLabel(); }
+  }
+  if(WEB){ var _langItem = q('#slv-mi-lang'); if(_langItem) _langItem.hidden = true; }
+  else if(I18N){ I18N.set(curLang); }
+  applyLangLabel();
   // NOTE: edit mode does NOT force the bar open — the PIN does. So you can run the editor with
   // the toolbar pinned (docked) or as a top slideout, your choice.
   function lockedOpen(){
@@ -1221,10 +1313,15 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
       if(exp){ HOST.exportAs(exp); }
       else if(cmd === 'open'){ HOST.open(); }
       else if(cmd === 'reload'){ HOST.reload(); }
+      // Rename: the web shell installs window.slaide.renameDeck (pencil-on-title, same path).
+      // Native has no deck-rename concept yet — send the ipc message anyway so a future Rust
+      // handler has somewhere to land; today it's a no-op there.
+      else if(cmd === 'rename'){ var s = S(); if(s && typeof s.renameDeck === 'function'){ s.renameDeck(); } else { ipcSend('rename'); } }
       // Hosted-only: the web shell owns the panel (cloud versions live in the aivory API, not here).
       else if(cmd === 'version-history'){ if(window.__slvVersionHistory) window.__slvVersionHistory(); }
       else if(cmd === 'save' && saveHandler){ saveHandler(); }
       else if(cmd === 'theme'){ toggleTheme(); }
+      else if(cmd === 'lang'){ toggleLang(); }
       setMenu(false);
     });
   });
@@ -1590,6 +1687,9 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
           Array.prototype.forEach.call(tabsEl.querySelectorAll('.slv-tab'), function(x){ x.setAttribute('aria-selected', x===t ? 'true' : 'false'); });
           Array.prototype.forEach.call(bandEl.querySelectorAll('.slv-bandtab'), function(bt){ bt.classList.toggle('slv-active', bt.getAttribute('data-tab')===name); });
           syncBarH();
+          // The Animation pane follows this tab: Properties on every other tab, the pane only while
+          // Animations is selected (user rule 2026-09-07). The band's listener owns the toggle.
+          document.dispatchEvent(new CustomEvent('slaide-anim-pane-request', { detail: { on: name === 'animations' } }));
         });
       });
     }
@@ -1637,6 +1737,99 @@ body.sl-studio-on #slv-band{ max-height:0 !important; opacity:0; padding:0 12px;
           else if(f === 'alignRight') ed.setElementAlign('right');
         });
       });
+    })();
+    // Animations tab: slide transition, element entrance, animation pane toggle, play preview.
+    // Style/effect lists come straight off __SLAIDE_MASTER__ (the Pro engine's per-theme catalog),
+    // falling back to the engine's built-in names — same fallback editor.ts's Properties tab uses.
+    (function initAnim(){
+      var transSel = q('#slv-anim-trans'), transMs = q('#slv-anim-trans-ms'), transAll = q('#slv-anim-trans-all');
+      var entSel = q('#slv-anim-entrance'), addBtn = q('#slv-anim-add'), elLabel = q('#slv-anim-el-label');
+      var paneBtn = q('#slv-anim-pane-btn'), playBtn = q('#slv-anim-play');
+      var FALLBACK_TRANS = ['none','morph','fade','dissolve','zoom','zoom-out','slide-left','slide-right','slide-up','slide-down','push','cover','reveal','flip','fade-through-black'];
+      var FALLBACK_ENT = ['fade','fade-up','fade-down','fade-left','fade-right','slide-in-left','slide-in-right','slide-in-up','slide-in-down','zoom-in','zoom-out','pop','blur-in','rise'];
+      function master(){ return window.__SLAIDE_MASTER__ || {}; }
+      // The theme names transitions/entrances as raw keys ("slide-up", "none"). Show them the way a
+      // person reads them ("Slide up", "None") and keep the raw key as the option VALUE — the deck
+      // and the master both store the key, so only the label changes.
+      function animLabel(n){
+        var s = String(n == null ? '' : n).trim();
+        if(!s || s === 'none') return 'None';
+        s = s.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+        return s.charAt(0).toUpperCase() + s.slice(1);
+      }
+      function fillSelect(sel, names, blank){
+        sel.innerHTML = '';
+        if(blank){ var o0 = document.createElement('option'); o0.value = ''; o0.textContent = blank; sel.appendChild(o0); }
+        // An effect name is the theme's, not prose — the hosted German sweep would turn the
+        // transition "Slide" into "Folie". Only the "None" entry stays translatable.
+        names.forEach(function(n){ var o = document.createElement('option'); o.value = n; o.textContent = animLabel(n);
+          if(n && n !== 'none') o.setAttribute('data-no-i18n', '1'); sel.appendChild(o); });
+      }
+      (function fillLists(){
+        var m = master();
+        fillSelect(transSel, (m.transitions && m.transitions.length) ? m.transitions : FALLBACK_TRANS);
+        fillSelect(entSel, (m.entrances && m.entrances.length) ? m.entrances : FALLBACK_ENT, 'None');
+      })();
+      transSel.addEventListener('change', function(){ var s = S(); if(s && s.anim) s.anim.setSlideTransition(transSel.value, parseInt(transMs.value, 10) || 0); });
+      transMs.addEventListener('change', function(){ var s = S(); if(s && s.anim) s.anim.setSlideTransition(transSel.value, parseInt(transMs.value, 10) || 0); });
+      transAll.addEventListener('click', function(){ var s = S(); if(s && s.anim) s.anim.applyTransitionToAll(); });
+      entSel.addEventListener('change', function(){ var s = S(); if(s && s.anim) s.anim.setEntrance(entSel.value); });
+      addBtn.addEventListener('click', function(){ var s = S(); if(s && s.anim) s.anim.addAnimation(); });
+      // Pane: this band owns the toggle button + the persisted pref; the pane itself (rows,
+      // drag-reorder, Start select) lives in editor.ts and only reacts to the event/class.
+      function setPaneOn(on){
+        animPaneOn = !!on;
+        paneBtn.setAttribute('aria-pressed', animPaneOn ? 'true' : 'false');
+        body.classList.toggle('slv-anim-pane-on', animPaneOn);
+        document.dispatchEvent(new CustomEvent('slaide-anim-pane', { detail: { on: animPaneOn } }));
+      }
+      paneBtn.addEventListener('click', function(){ setPaneOn(paneBtn.getAttribute('aria-pressed') !== 'true'); savePrefs(); });
+      // The pane's own "Properties" link asks to turn off without going back through the ribbon.
+      document.addEventListener('slaide-anim-pane-request', function(e){
+        var on = !!(e.detail && e.detail.on);
+        if(on === animPaneOn) return;
+        setPaneOn(on); savePrefs();
+      });
+      // Not restored from prefs any more: the pane is a view of the Animations tab, never the
+      // default right panel (user rule 2026-09-07). The pref is still written for the button state.
+      // Play slide: use a host-provided preview if one exists (present/replay already wired
+      // elsewhere), else replay THIS slide's builds locally by toggling the same .sl-shown class
+      // the runtime uses — self-contained, no navigation, no dependency on the runtime's private
+      // step counter (which resyncs on the next real forward()/backward() regardless).
+      playBtn.addEventListener('click', function(){
+        var s = S();
+        if(s && typeof s.playSlide === 'function'){ s.playSlide(); return; }
+        var slide = document.querySelector('.sl-slide.sl-active');
+        if(!slide) return;
+        var els = Array.prototype.slice.call(slide.querySelectorAll('[data-build]'));
+        if(!els.length) return;
+        var byStep = {};
+        els.forEach(function(e){ e.classList.remove('sl-shown'); var b = parseInt(e.getAttribute('data-build'), 10) || 0; (byStep[b] = byStep[b] || []).push(e); });
+        var order = Object.keys(byStep).map(Number).sort(function(a, b){ return a - b; });
+        var i = 0;
+        (function tick(){
+          if(i >= order.length) return;
+          byStep[order[i]].forEach(function(e){ e.classList.add('sl-shown'); });
+          i++; setTimeout(tick, 500);
+        })();
+      });
+      // Keep the band in sync with whatever is selected (or not) — the editor fires this on
+      // every selection change; also re-check after a re-render swaps the deck in.
+      function syncAnimBand(d){
+        var s = S(), ed = s && s.__editor;
+        if(!d) d = (ed && ed.getSelection) ? ed.getSelection() : { kind:'none', element:null, slide:null };
+        var has = !!d.element;
+        entSel.disabled = !has; addBtn.disabled = !has;
+        elLabel.textContent = has ? ('Animation · ' + (d.element.label || 'Element')) : 'Select an element';
+        entSel.value = has ? (d.element.entrance || '') : '';
+        if(d.slide){
+          transSel.value = d.slide.transition || 'none';
+          if(document.activeElement !== transMs) transMs.value = (d.slide.transitionMs != null) ? d.slide.transitionMs : 400;
+        }
+      }
+      document.addEventListener('slaide-selection', function(e){ syncAnimBand(e.detail); });
+      document.addEventListener('slaide:change', function(){ syncAnimBand(); });
+      syncAnimBand();
     })();
     // Editing is the default mode in the editor build: enter it once the deck is ready.
     // (Esc is left to the editor for deselect; toggle edit off with the Edit button.)

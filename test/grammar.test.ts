@@ -88,6 +88,7 @@ describe('near-miss sigil lints (B1)', () => {
   test('malformed region marker warns (bad-region); a well-formed one does not', () => {
     expect(build(':: body ::\n::num\nhello').codes).toContain('bad-region'); // no spaces, no closing ::
     expect(build(':: body ::\n:: num :: x').codes).toContain('bad-region'); // trailing content after ::
+    expect(build(':: body ::\nhello\n::').codes).toContain('bad-region'); // bare `::` "closer" — no such syntax, renders literally
     expect(build(':: body ::\nhello').codes).not.toContain('bad-region');
     expect(build(':: title ::\nhello').codes).not.toContain('bad-region');
   });

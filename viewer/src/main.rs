@@ -96,7 +96,7 @@ enum Theme {
 /// Persistent viewer-chrome preferences. The toolbar/slides default ON: the toolbar stays
 /// "docked" (pinned open) and the slides navigator is shown, until the user turns them off;
 /// the colour theme defaults to light. Stored as JSON at `config_dir()/Slaide/viewer-prefs.json`.
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ViewerPrefs {
     #[serde(default = "yes")]
     toolbar_pinned: bool,
@@ -104,13 +104,17 @@ struct ViewerPrefs {
     slides_visible: bool,
     #[serde(default)]
     theme: Theme,
+    /// Interface language ("de"/"en"). `None` means "follow the machine" — the ribbon then reads
+    /// `navigator.language`, so a German Windows is German on first run without anyone choosing.
+    #[serde(default)]
+    lang: Option<String>,
 }
 fn yes() -> bool {
     true
 }
 impl Default for ViewerPrefs {
     fn default() -> Self {
-        ViewerPrefs { toolbar_pinned: true, slides_visible: true, theme: Theme::Light }
+        ViewerPrefs { toolbar_pinned: true, slides_visible: true, theme: Theme::Light, lang: None }
     }
 }
 fn prefs_path() -> Option<PathBuf> {
@@ -1000,6 +1004,10 @@ fn inject_toolbar(html: &str, editable: bool, license: Option<&License>, monitor
     // lives in its own file so the HTML/CSS/JS is editable as such.
     // include_str! bakes it in at compile time; cargo rebuilds when it changes.
     const BAR: &str = include_str!("ribbon.html");
+    // The interface language: dictionary + one DOM pass. Injected BEFORE the ribbon, whose setup
+    // calls `window.__slvI18n.set(...)` with the saved (or machine) language. The HOSTED editor
+    // never gets this file — that page runs the website's own pass instead.
+    const I18N: &str = include_str!("i18n.js");
     // Runtime config handed to the ribbon before its script runs:
     //  - __SLV_EDITABLE__: the Edit affordance is dormant unless the engine reported
     //    editing is available (Pro engine + license) — this flag is the single gate.
@@ -1030,15 +1038,18 @@ fn inject_toolbar(html: &str, editable: bool, license: Option<&License>, monitor
         let w = serde_json::to_string(ws).unwrap_or_else(|_| "\"\"".into());
         head.push_str(&format!("<script>window.__SLV_NATIVE_CHAT__={{base:{b},wsUrl:{w}}};</script>\n"));
     }
+    let i18n = format!("<script>{I18N}</script>
+");
     if let Some(idx) = html.rfind("</body>") {
-        let mut out = String::with_capacity(html.len() + BAR.len() + head.len());
+        let mut out = String::with_capacity(html.len() + BAR.len() + head.len() + i18n.len());
         out.push_str(&html[..idx]);
         out.push_str(&head);
+        out.push_str(&i18n);
         out.push_str(BAR);
         out.push_str(&html[idx..]);
         out
     } else {
-        format!("{html}{head}{BAR}")
+        format!("{html}{head}{i18n}{BAR}")
     }
 }
 

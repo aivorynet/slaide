@@ -218,9 +218,23 @@ describe.skipIf(!hasPlaywright)('pptx export e2e', () => {
       expect(sawText).toBe(true);
       expect(sawTiming).toBe(true); // the deck has `>>>` builds
 
+      // speaker notes reach ppt/notesSlides/* — without this the note survives the import
+      // and dies on the way back out to PowerPoint.
+      const noted = ir.slides.map((s, i) => [i, s.notes] as const).filter(([, n]) => n);
+      expect(noted.length).toBeGreaterThan(0); // the example deck carries `???` notes
+      const notesXml = (await Promise.all(
+        Object.keys(zip.files)
+          .filter((p) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(p))
+          .map((p) => zip.file(p)!.async('string')),
+      )).join('\n');
+      for (const [, n] of noted) expect(notesXml).toContain(n!.split('\n')[0]);
+
       // round-trip: the produced pptx re-imports cleanly (proves it is not corrupt)
       const rt = await importDeck(out, join(work, 'rt'));
       expect(rt.slides).toBe(ir.slides.length);
+      // and the notes come back with it
+      const rtSource = readFileSync(rt.deckPath, 'utf8');
+      for (const [, n] of noted) expect(rtSource).toContain(n!.split('\n')[0]);
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

@@ -225,6 +225,7 @@ layouts:
 | `valign` | **vertical** align in cell | `top`/`center`/`bottom` |
 | `justify` | horizontal self-align in cell — use for an **image/box** (`align` only moves text) | `left`/`center`/`right` |
 | `weight` / `leading` / `transform` / `italic` | weight / line-height / `uppercase` / `true` | — |
+| `writing` | writing-mode: vertical text (a spine label, a tall side caption) | `vertical` (= `vertical-rl`) or a raw `writing-mode` value |
 | `maxw` | max-width (wrap control). Body 30–40ch; a LONG hero title 16–22ch; a 2–3 word title gets **no maxw** (it wraps ugly and narrows the box) | e.g. `"36ch"` |
 | `box` | surface panel (bg + padding + radius) | `true`, a colour role/palette name (preferred), a **named master gradient** (`box: brand` → padded, rounded, gradient hero/closing panel), or a raw hex / CSS colour / gradient |
 | `bg` | background of the slot region | any CSS colour / gradient (literal) |

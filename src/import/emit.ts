@@ -116,6 +116,29 @@ function shapeContent(shape: ImpShape): string {
 
 const ALIGN: Record<string, string> = { l: 'left', ctr: 'center', r: 'right', just: 'justify' };
 
+// A PowerPoint speaker note is free text: it can hold a bare `---`, a `:: region ::` line or
+// its own `???`. The deck is segmented on `---` BEFORE notes are pulled out of the body
+// (parse.ts splitSegments -> parseBody), so an unescaped fence would invent a phantom slide
+// and shift every later slide index. Escape those three shapes, and start a fresh `???`
+// block after a blank line (a note chunk ends there; parse rejoins chunks with \n\n).
+function notesBlock(notes: string | undefined): string {
+  const text = (notes ?? '').replace(/\r\n?/g, '\n').trim();
+  if (!text) return '';
+  const safe = text
+    .split('\n')
+    .map((l) => (/^\s*(---+\s*|::\s*[\w-]+\s*::\s*|\?\?\?.*)$/.test(l) ? '\\' + l.trimStart() : l));
+  const blocks: string[] = [];
+  let cur: string[] = [];
+  for (const l of safe) {
+    if (l.trim() === '') {
+      if (cur.length) blocks.push(cur.join('\n'));
+      cur = [];
+    } else cur.push(l);
+  }
+  if (cur.length) blocks.push(cur.join('\n'));
+  return blocks.length ? '\n\n' + blocks.map((b) => '??? ' + b).join('\n\n') : '';
+}
+
 function lum(hex: string): number {
   const m = hex.replace('#', '');
   if (m.length < 6) return 1;
@@ -200,7 +223,7 @@ export function emit(ir: ImportIR): { master: string; deck: string } {
       backgrounds[bgName] = bgDef(slide.background);
       frontmatter += `\nbackground: ${bgName}`;
     }
-    deckParts.push(`${frontmatter}\n---\n${regions.join('\n\n')}`);
+    deckParts.push(`${frontmatter}\n---\n${regions.join('\n\n')}${notesBlock(slide.notes)}`);
   });
 
   // Dark-deck detection from slide backgrounds (and full-slide rects as fallback).

@@ -49,19 +49,44 @@ export const RUNTIME_JS = String.raw`
   function cssVar(cs, name){ var n = parseFloat(cs.getPropertyValue(name)); return isFinite(n) ? Math.max(0, n) : 0; }
   function scale(){
     var pres = isPresenting();
-    var cs = getComputedStyle(document.documentElement);
+    // Read the docks off .sl-viewport, NOT documentElement. The viewport is the box we fit to, so
+    // its own reservations are the ones that matter — and a custom property declared on an element
+    // beats the value it would inherit. That lets a host whose LAYOUT already excludes the panels
+    // (the web editor's grid cell) declare these zero on .sl-viewport and be immune to every other
+    // writer aimed at documentElement.style: ribbon.html's setDock/setBstrip and editor.ts's
+    // openInspector all reserve gutters that a grid cell has already subtracted, and whichever ran
+    // last used to win. The native viewer declares nothing here, so it still inherits the ribbon's
+    // values and behaves exactly as before.
+    var cs = getComputedStyle(vp || document.documentElement);
     var dl = pres ? 0 : cssVar(cs,'--slaide--dock-left'), dr = pres ? 0 : cssVar(cs,'--slaide--dock-right');
     var dt = pres ? 0 : cssVar(cs,'--slaide--dock-top');
     // Bottom dock = chrome dock (bstrip/filmstrip, absolute) + notes reservation (independent), so
     // the two writers never clobber each other. .sl-notes sits at --slaide--dock-bottom (above the chrome).
     var db = pres ? 0 : cssVar(cs,'--slaide--dock-bottom') + cssVar(cs,'--slaide--dock-notes');
+    // Fit to .sl-viewport's OWN box. It is .sl-stage's containing block, so the box we scale
+    // against is the very box the transform below is resolved in — they cannot drift apart.
+    // Measuring the window instead made the fit depend on a host
+    // keeping window-relative CSS vars in sync with its layout, and one unoverridden 'width:100dvw'
+    // was enough to fit the deck to the whole browser window inside a 340px-inset cell (2026-09-03).
+    // clientWidth/Height, not getBoundingClientRect(): the rect is post-transform and would be wrong
+    // under a transformed ancestor, while clientWidth is the padding box the CSS padding acts on.
+    // The window fallback keeps the iOS visual-viewport path alive if .sl-viewport is ever absent.
+    var boxW = vp ? vp.clientWidth : 0, boxH = vp ? vp.clientHeight : 0;
+    if(!(boxW > 1 && boxH > 1)){
+      var vv = window.visualViewport;
+      boxW = vv ? vv.width : window.innerWidth; boxH = vv ? vv.height : window.innerHeight;
+    }
     // Clamp: a stale/over-sized dock reservation (e.g. a docked panel that hasn't been restyled
     // for a narrow viewport) must never flip the fit negative — that mirrors + shrinks the stage
     // to a black sliver instead of just cramming it small. See editor.ts's openInspector clamp.
-    var vw = Math.max(0, window.innerWidth - dl - dr), vh = Math.max(0, window.innerHeight - dt - db);
+    var vw = Math.max(0, boxW - dl - dr), vh = Math.max(0, boxH - dt - db);
     var fit = Math.max(0.08, Math.min(vw/CW, vh/CH));
     var s = fit * zoomFactor;
     if(zoomFactor<=1){ panX = panY = 0; } else { clampPan(s, vw, vh); }
+    // Centring stays in the transform. CSS grid cannot do it: place-items:center start-aligns a
+    // grid item LARGER than its area, and the unscaled canvas always is. But tx/ty are now pure
+    // arithmetic over the SAME box the browser laid .sl-viewport out as, re-run by the observer
+    // below whenever that box changes — so "always centred unless the user zooms in" holds.
     var tx = dl + (vw - CW*s)/2 + panX, ty = dt + (vh - CH*s)/2 + panY;
     stage.style.transform = 'translate('+tx+'px,'+ty+'px) scale('+s+')';
   }
@@ -348,8 +373,16 @@ export const RUNTIME_JS = String.raw`
   });
   // ---- drag-to-pan (only when zoomed in past fit) -------------------------
   var dragging=false, dragMoved=false, dragX=0, dragY=0;
+  // Touch navigation state: a swipe (or a tap in the left edge zone) moves BACK, which a phone
+  // had no gesture for at all — every tap advanced and the deck was a one-way street.
+  var swStartX=0, swStartY=0, swTouch=false, swDid=false;
+  var SWIPE_MIN_PX = 45;        // shorter than this is a tap, not a swipe
+  var BACK_ZONE_FRAC = 0.25;    // left quarter of the slide area = "previous", reader convention
   if(vp){
     vp.addEventListener('pointerdown', function(e){
+      // Touch nav needs the start point even when NOT zoomed: on a phone every tap used to
+      // advance, so there was no way back. Record it first, then fall through to pan.
+      swStartX = e.clientX; swStartY = e.clientY; swTouch = e.pointerType === 'touch'; swDid = false;
       if(zoomFactor<=1 || !navEnabled) return;
       dragging=true; dragMoved=false; dragX=e.clientX; dragY=e.clientY;
       try{ vp.setPointerCapture(e.pointerId); }catch(_){}
@@ -362,19 +395,55 @@ export const RUNTIME_JS = String.raw`
       panX+=dx; panY+=dy; dragX=e.clientX; dragY=e.clientY; scale();
     });
     function endDrag(e){ if(!dragging) return; dragging=false; vp.style.cursor=zoomFactor>1?'grab':''; try{ vp.releasePointerCapture(e.pointerId); }catch(_){} }
-    vp.addEventListener('pointerup', endDrag);
+    vp.addEventListener('pointerup', function(e){
+      // Swipe wins over tap: a mostly-horizontal drag past the threshold navigates and marks
+      // itself handled, so the click that follows on touch does not move a second slide.
+      if(navEnabled && zoomFactor<=1 && !isTyping()){
+        var dx = e.clientX - swStartX, dy = e.clientY - swStartY;
+        if(Math.abs(dx) >= SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)){
+          swDid = true;
+          if(dx > 0) backward(); else forward();
+        }
+      }
+      endDrag(e);
+    });
     vp.addEventListener('pointercancel', endDrag);
     vp.addEventListener('click', function(e){
       if(!navEnabled || isTyping()) return;                      // nav disabled, or focus is in a field
+      if(swDid){ swDid = false; return; }                        // the swipe already navigated
       if(dragMoved){ dragMoved=false; return; }                  // finished a pan, not a tap
       var sel = window.getSelection && window.getSelection();
       if(sel && !sel.isCollapsed && String(sel)) return;         // user is selecting text — let them, don't advance
       if(e.target.closest('a')) return;
       if(e.target.closest('.sl-notes,.sl-help,.sl-counter')) return;
+      // On touch there is no right-click and no keyboard: the left edge of the slide is the
+      // only always-available way back. Pointer devices keep the plain click-advances rule.
+      if(swTouch){
+        var r = vp.getBoundingClientRect();
+        if(r.width > 0 && (e.clientX - r.left) < r.width * BACK_ZONE_FRAC){ backward(); return; }
+      }
       forward();
     });
   }
   window.addEventListener('resize', scale);
+  // A host can resize the viewport BOX with no window resize at all: the web editor animates its
+  // grid columns for .2s when the chat rail collapses or the inspector opens, so the synthetic
+  // resize it dispatches measures the OLD column width and the deck stayed off-centre for the whole
+  // transition. Observe the element we actually fit to. No "ResizeObserver loop" hazard: scale()
+  // writes a transform on .sl-stage, a DIFFERENT element, and .sl-viewport's box is inset-driven.
+  if(vp && window.ResizeObserver){ try{ new ResizeObserver(function(){ scale(); }).observe(vp); }catch(e){} }
+  // iOS fires neither a reliable resize when Safari's chrome collapses nor one early enough
+  // on rotation — the visual viewport does. orientationchange lands before the new metrics
+  // settle, so re-fit on the next frame as well.
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scale);
+    window.visualViewport.addEventListener('scroll', scale);
+  }
+  window.addEventListener('orientationchange', function(){
+    scale();
+    requestAnimationFrame(scale);
+    setTimeout(scale, 250);
+  });
 
   // ---- present mode — Fullscreen API by default; a host (native viewer / web ribbon) can take
   //      it over via window.__slvPresentHook (the desktop app drives an OS-window fullscreen over
